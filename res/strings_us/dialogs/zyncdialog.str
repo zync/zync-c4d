@@ -1,0 +1,49 @@
+  DIALOGSTRINGS zyncdialog
+  {
+    DIALOG_TITLE "Render with Zync";
+	
+	VMS_TITLE "Machines setup";
+	VMS_NUM_CAPTION "Number of machines";
+	VMS_TYPE_CAPTION "Machine type";
+	EXAMPLE_MACHINE_NAME "TEST MACHINE WHATEVER (zillion $)";
+	EST_COST "Estimated cost: ???$ ";
+	COST_CALC "Cost calculator";
+	
+	PROJ_TITLE "Cloud storage";
+	EXISTING_PROJ_NAME "Existing Zync project";
+	NEW_PROJ_NAME "New Zync project";
+	
+	JOB_TITLE "General job settings";
+	OUTPUT_CAPTION "Output directory";
+	JOB_PRIORITY_CAPTION "Job priority";
+	JUST_UPLOAD_CAPTION "Just upload files";
+	NO_UPLOAD_CAPTION "Don't upload files";
+	IGN_MISSING_PLUGINS_CAPTION "Ignore missing plugin errors";
+	
+	RENDER_TITLE "Rendering settings";
+	RENDERER_CAPTION "Renderer";
+	REND_C4D_NAME "Cinema 4D renderer";
+	REND_ARNOLD_NAME "Arnold";
+	
+	FRAMES_CAPTION "Frames range";
+	STEP_CAPTION "Frame step";
+	CHUNK_CAPTION "Minimal number of frames per task";
+	
+	CAMERA_CAPTION "Camera";
+	
+	WHAT_TO_RENDER "What to render: layers selection or whatnot";
+	
+	RESOLUTION_CAPTION "Resolution:";
+	RESOLUTION_CAPTION2 "x";
+	
+	ACCOUNT_TITLE "Zync account";
+	LOGIN_CAPTION "Log in with Google";
+	LOGOUT_CAPTION "Log out";
+	LOGGED_AS "Logged in as example@example.com";
+
+	LAUNCH_CAPTION "Launch Zync job";
+	
+	FOO_NAME "Foo";
+	BAR_NAME "Bar";
+	BAZ_NAME "Baz";
+  }
