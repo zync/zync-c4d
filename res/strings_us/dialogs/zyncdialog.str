@@ -10,8 +10,8 @@
 	COST_CALC "Cost calculator";
 	
 	PROJ_TITLE "Cloud storage";
-	EXISTING_PROJ_NAME "Existing Zync project";
-	NEW_PROJ_NAME "New Zync project";
+	EXISTING_PROJ_NAME "Use existing Zync project";
+	NEW_PROJ_NAME "Create new Zync project";
 	
 	JOB_TITLE "General job settings";
 	OUTPUT_CAPTION "Output directory";
