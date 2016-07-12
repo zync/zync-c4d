@@ -43,9 +43,45 @@ class ZyncDialog(gui.GeDialog):
     
     def Command(self, id, msg):
         if id==symbols["LAUNCH"]:
+            print '---  DEPS START  ---'
+            for dep in self.CollectDeps():
+                print dep
+            print '---   DEPS END   ---'
             gui.MessageDialog("Boom!")
             
         return True
+        
+    def CollectDeps(self):
+        document = c4d.documents.GetActiveDocument()
+        materials = document.GetMaterials()
+        # THIS IS THE "PRETTY" WAY TO GET _JUST NORMAL TEXTURES_
+        # shaders = (material[c4d.MATERIAL_COLOR_SHADER] for material in materials)
+        # texture_paths_with_nones = (shader[c4d.BITMAPSHADER_FILENAME] for shader in shaders)
+        # texture_paths = [path for path in texture_paths_with_nones if path is not None]
+        
+        # THIS IS THE AWFUL WAY, BUT SHOULD FIND ANYTHING THAT COULD BE FOUND
+        # IT MAY ALSO FIND _A LOT OF OTHER THINGS_ WHICH WE DO NOT WANT
+        
+        meaningful_indices = set(i for i in c4d.__dict__.itervalues() if isinstance(i, int))
+        
+        textures = set()
+        for material in materials:
+            for i in meaningful_indices:
+                try:
+                    if material[i] and hasattr(material[i], '__getitem__'):
+                        textures.add(material[i][c4d.BITMAPSHADER_FILENAME])
+                except (AttributeError, IndexError):
+                    pass
+
+        doc_path = document.GetDocumentPath()
+        doc_name = document.GetDocumentName()
+        tex_path = os.path.join(doc_path, "tex")
+        textures = list(textures)
+        for i, t in enumerate(textures):
+            if not os.path.isabs(t):
+                textures[i] = os.path.join(tex_path, t)
+        
+        return [os.path.join(doc_path, doc_name)] + textures
 
     def AskClose(self):
         return False  # change to True to disallow closing - to be used during execution?
