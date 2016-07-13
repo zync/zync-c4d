@@ -1,3 +1,7 @@
+// To be parsable by read_c4d_symbols(), this file must
+// obey some simple rules:
+//  - Every symbol must be defined on single, separate line,
+//  - Every symbol must have explicit value assigned.
 enum {
 	zyncdialog = 5555,
 	VMS_NUM = 1001,
@@ -26,6 +30,8 @@ enum {
 	LOGOUT = 1034,
 	LOGGED_LABEL = 1035,
 	LAUNCH = 1036,
+	
+	CLOSE = 1037,
 	
 	FOO = 9998,
 	BAR = 9997,
