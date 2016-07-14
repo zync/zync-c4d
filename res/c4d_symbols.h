@@ -4,6 +4,7 @@
 //  - Every symbol must have explicit value assigned.
 enum {
 	zyncdialog = 5555,
+	DIALOG_TOP_GROUP = 1000,
 	VMS_NUM = 1001,
 	VMS_TYPE = 1024,
 	EST_PRICE = 1026,

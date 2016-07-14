@@ -32,22 +32,15 @@ def read_c4d_symbols():
 symbols = read_c4d_symbols()
 
 
-class ZyncConnectionDialog(gui.GeDialog):
-    """This is the dialog shown directly after launching the plugin
-    
-    This dialog is responsible for:
-        - informing the user that plugin is connecting to Zync server
-        - informing the user that manual action in browser window may
-            be necessary
-        - repeatably check connection state and triggering main plugin
-            window when connection is ready
-    """
+class ZyncDialog(gui.GeDialog):
     
     def __init__(self, plugin_instance):
         self.plugin_instance = plugin_instance
-        super(ZyncConnectionDialog, self).__init__()
+        super(ZyncDialog, self).__init__()
 
     def CreateLayout(self):
+        self.GroupBegin(symbols['DIALOG_TOP_GROUP'], c4d.BFH_SCALEFIT, 1)
+        
         self.SetTitle("Connecting to Zync...")
         self.GroupBegin(symbols['BAR'], c4d.BFH_SCALEFIT, 1)
         
@@ -61,41 +54,77 @@ class ZyncConnectionDialog(gui.GeDialog):
         self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
         self.GroupEnd()
         self.SetTimer(100)
+        
+        self.GroupEnd()
+        
+        return True
+        
+    def SetComboboxContent(self, widget_id, child_id_base, options):
+        self.FreeChildren(widget_id)
+        for i, option in enumerate(options):
+            self.AddChild(widget_id, child_id_base+i, option)
+        if options:
+            # select the first option
+            self.SetLong(widget_id, child_id_base)
+        
+    def UpdatePrice(self):
+        # TODO
+        pass
+            
+    def DefaultOutputDir(self, document):
+        # TODO: something sensible
+        return os.path.join(document.GetDocumentPath(), 'output')
+            
+    def CollectCameras(self, document):
+        # TODO: default cameras
+        cameras = []
+        for obj in document.GetObjects():
+            if isinstance(obj, c4d.CameraObject):
+                cameras.append({
+                    'name': obj.GetName(),
+                    'camera': obj
+                })
+        return cameras
+
+    def InitValues(self):
         return True
     
     def Command(self, id, msg):
         if id == symbols["CLOSE"]:
             self.Close()
             self.plugin_instance.Fail()
+        elif id == symbols["LOGOUT"]:
+            self.connection_state = None
+            self.plugin_instance.zync_conn.logout()
+            del self.plugin_instance.zync_conn
+            self.Close()
+            gui.MessageDialog("Logged out from Zync")
+            self.plugin_instance.active = False
+        elif id == symbols["COST_CALC_LINK"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            webbrowser.open('http://zync.cloudpricingcalculator.appspot.com')
+        elif id == symbols["LAUNCH"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            self.LaunchJob()
         return True
         
     def Timer(self, msg):
         # There seems to be no good way to create timer outside the dialog,
         # thats why it's here and not directly in ZyncPlugin.
-        
-        print 'Timer'
 
         if self.plugin_instance.connection_state:
+            self.SetTimer(0)
             c4d.gui.SetMousePointer(c4d.MOUSE_NORMAL)
             if self.plugin_instance.connection_state == 'success':
-                self.Close()
-                self.plugin_instance.ShowMainWindow()
+                self.LayoutFlushGroup(symbols['DIALOG_TOP_GROUP'])
+                self.CreateMainDialogLayout()
+                self.LayoutChanged(symbols['DIALOG_TOP_GROUP'])
             else:
                 gui.MessageDialog("Error while connecting to Zync:\n\n" + self.plugin_instance.connection_state[1].message)
                 self.Close()
                 self.plugin_instance.Fail()
-            self.SetTimer(0)
         else:
             c4d.gui.SetMousePointer(c4d.MOUSE_BUSY)
-
-
-class ZyncMainDialog(gui.GeDialog):
-    
-    def __init__(self, plugin_instance):
-        self.plugin_instance = plugin_instance
-        super(ZyncMainDialog, self).__init__()
-
-    def CreateLayout(self):
+        
+    def CreateMainDialogLayout(self):
         self.LoadDialogResource(symbols['zyncdialog'])
         
         zync = self.plugin_instance.zync_conn
@@ -143,54 +172,6 @@ class ZyncMainDialog(gui.GeDialog):
         # Login info
         self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(zync.email))  # TODO: gettext?
         
-        return True
-        
-    def SetComboboxContent(self, widget_id, child_id_base, options):
-        self.FreeChildren(widget_id)
-        for i, option in enumerate(options):
-            self.AddChild(widget_id, child_id_base+i, option)
-        if options:
-            # select the first option
-            self.SetLong(widget_id, child_id_base)
-        
-    def UpdatePrice(self):
-        # TODO
-        pass
-            
-    def DefaultOutputDir(self, document):
-        # TODO: something sensible
-        return os.path.join(document.GetDocumentPath(), 'output')
-            
-    def CollectCameras(self, document):
-        # TODO: default cameras
-        cameras = []
-        for obj in document.GetObjects():
-            if isinstance(obj, c4d.CameraObject):
-                cameras.append({
-                    'name': obj.GetName(),
-                    'camera': obj
-                })
-        return cameras
-
-    def InitValues(self):
-        return True
-    
-    def Command(self, id, msg):
-        if id == symbols["CLOSE"]:
-            self.Close()
-            self.plugin_instance.active = False
-        elif id == symbols["LOGOUT"]:
-            self.plugin_instance.zync_conn.logout()
-            del self.plugin_instance.zync_conn
-            self.Close()
-            gui.MessageDialog("Logged out from Zync")
-            self.plugin_instance.active = False
-        elif id == symbols["COST_CALC_LINK"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
-            webbrowser.open('http://zync.cloudpricingcalculator.appspot.com')
-        elif id == symbols["LAUNCH"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
-            self.LaunchJob()
-        return True
-        
     def LaunchJob(self):
         # TODO: collect actual job data
         self.plugin_instance.LaunchJob()
@@ -211,61 +192,40 @@ class ZyncPlugin(c4d.plugins.CommandData):
     dialog = None
     active = False
     connecting = False
+    connection_state = None
     
     def Execute(self, doc):
         if self.active:
-            if self.dialog:
-                # reopen dialog to ensure it is visible
-                # TODO: any better solution?
-                self.dialog.Close()
-                self.OpenDialog()
+            # TODO: restore? reopen? anything?
             return True
         self.active = True
-        self.connection_state = None
+        if self.connection_state != 'success':
+            self.connection_state = None
         if (c4d.documents.GetActiveDocument().GetDocumentPath() == '' or 
                 c4d.documents.GetActiveDocument().GetChanged()):
             gui.MessageDialog("You must save the active document before rendering it with Zync.")
             self.active = False
             return True
 
-        if hasattr(self, 'zync_conn'):
-            # no need to connect, just show the window
-            self.ShowMainWindow()
-            return True
-        
-        if self.connecting:
-            self.ShowConnectingDialog()
-        else:
+        if not hasattr(self, 'zync_conn') and not self.connecting:
             try:
                 zync_python = self.ImportZyncPython()
             except ZyncException, e:
                 gui.MessageDialog(e.message)
                 print e
                 return False
-        
-            # ZyncConnectionDialog will be polling for the result of connection in its Timer() method.
+
+            # ZyncDialog will be polling for the result of connection in its Timer() method.
             self.connecting = True
             thread.start_new_thread(self.ConnectToZync, (zync_python,))
-            
-            self.ShowConnectingDialog()
+
+        self.dialog = ZyncDialog(self)
+        self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
 
         return True
 
-    def ShowConnectingDialog(self):
-        connection_dialog = ZyncConnectionDialog(self)
-        c4d.gui.SetMousePointer(c4d.MOUSE_BUSY)
-        self.dialog = connection_dialog
-        self.OpenDialog()
-        
-    def ShowMainWindow(self):
-        self.dialog = ZyncMainDialog(self)
-        self.OpenDialog()
-        
-    def OpenDialog(self):
-        return self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
-        
     def Fail(self):
-        # called by ZyncConnectionDialog in case of connection failure
+        # flushes state in case of closing dialog
         self.dialog = None
         self.active = False
 
@@ -315,8 +275,9 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
     def LaunchJob(self):
         self.dialog.Close()
+        self.dialog = None
         gui.MessageDialog("Boom!\n\n" + '\n'.join(self.CollectDeps()))
-        self.active = True
+        self.active = False
         
     def CollectDeps(self):
         document = c4d.documents.GetActiveDocument()
