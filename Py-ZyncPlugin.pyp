@@ -1,6 +1,6 @@
 import c4d
 from c4d import gui, plugins
-import os, sys, re, thread
+import os, sys, re, thread, webbrowser
 
 
 dir, file = os.path.split(__file__)
@@ -65,7 +65,7 @@ class ZyncConnectionDialog(gui.GeDialog):
     def Timer(self, msg):
         # There seems to be no good way to create timer outside the dialog,
         # thats why it's here and not directly in ZyncPlugin.
-            
+
         if self.plugin_instance.connection_state:
             c4d.gui.SetMousePointer(c4d.MOUSE_NORMAL)
             if self.plugin_instance.connection_state == 'success':
@@ -88,8 +88,80 @@ class ZyncMainDialog(gui.GeDialog):
 
     def CreateLayout(self):
         self.LoadDialogResource(symbols['zyncdialog'])
-        self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(self.plugin_instance.zync_conn.email))  # TODO: gettext
+        
+        zync = self.plugin_instance.zync_conn
+        document = c4d.documents.GetActiveDocument()
+        
+        # VMs settings
+        self.SetLong(symbols['VMS_NUM'], 1)
+        self.SetComboboxContent(symbols['VMS_TYPE'],
+                                symbols['VMS_TYPE_OPTIONS'],
+                                zync.INSTANCE_TYPES)
+        self.UpdatePrice()
+
+        # Storage settings (zync project)
+        self.SetComboboxContent(symbols['EXISTING_PROJ_NAME'],
+                                symbols['PROJ_NAME_OPTIONS'],
+                                (p['name'] for p in zync.get_project_list()))
+        self.SetBool(symbols['NEW_PROJ'], True)
+        new_project_name = zync.get_project_name(document.GetDocumentName())  # TODO: anything more sensible?
+        self.SetString(symbols['NEW_PROJ_NAME'], new_project_name)
+        
+        # General job settings
+        self.SetLong(symbols['JOB_PRIORITY'], 50)
+        self.SetString(symbols['OUTPUT_DIR'], self.DefaultOutputDir(document))
+        
+        # Renderer settings
+        self.SetLong(symbols['RENDERER'], symbols['REND_C4D'])
+        fps = document.GetFps()
+        first_frame = document.GetMinTime().GetFrame(fps)
+        last_frame  = document.GetMaxTime().GetFrame(fps)
+        self.SetString(symbols['FRAMES'], "{}-{}".format(first_frame, last_frame))
+        self.SetLong(symbols['STEP'], 1)
+        self.SetLong(symbols['CHUNK'], 10)
+        
+        # Camera selection
+        self.cameras = self.CollectCameras(document)
+        self.SetComboboxContent(symbols['CAMERA'],
+                                symbols['CAMERA_OPTIONS'],
+                                (c['name'] for c in self.cameras))
+        
+        # Resolution
+        render_data = document.GetActiveRenderData()
+        self.SetLong(symbols['RES_X'], render_data[c4d.RDATA_XRES])
+        self.SetLong(symbols['RES_Y'], render_data[c4d.RDATA_YRES])
+        
+        # Login info
+        self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(zync.email))  # TODO: gettext?
+        
         return True
+        
+    def SetComboboxContent(self, widget_id, child_id_base, options):
+        self.FreeChildren(widget_id)
+        for i, option in enumerate(options):
+            self.AddChild(widget_id, child_id_base+i, option)
+        if options:
+            # select the first option
+            self.SetLong(widget_id, child_id_base)
+        
+    def UpdatePrice(self):
+        # TODO
+        pass
+            
+    def DefaultOutputDir(self, document):
+        # TODO: something sensible
+        return os.path.join(document.GetDocumentPath(), 'output')
+            
+    def CollectCameras(self, document):
+        # TODO: default cameras
+        cameras = []
+        for obj in document.GetObjects():
+            if isinstance(obj, c4d.CameraObject):
+                cameras.append({
+                    'name': obj.GetName(),
+                    'camera': obj
+                })
+        return cameras
 
     def InitValues(self):
         return True
@@ -97,6 +169,15 @@ class ZyncMainDialog(gui.GeDialog):
     def Command(self, id, msg):
         if id == symbols["CLOSE"]:
             self.Close()
+            self.plugin_instance.active = False
+        elif id == symbols["LOGOUT"]:
+            self.plugin_instance.zync_conn.logout()
+            del self.plugin_instance.zync_conn
+            self.Close()
+            gui.MessageDialog("Logged out from Zync")
+            self.plugin_instance.active = False
+        elif id == symbols["COST_CALC_LINK"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            webbrowser.open('http://zync.cloudpricingcalculator.appspot.com')
         elif id == symbols["LAUNCH"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
             self.LaunchJob()
         return True
@@ -122,7 +203,13 @@ class ZyncPlugin(c4d.plugins.CommandData):
     active = False
     
     def Execute(self, doc):
-        if self.active: return  # prevent opening multiple zync windows
+        if self.active:
+            if self.dialog:
+                # reopen dialog to ensure it is visible
+                # TODO: any better solution?
+                self.dialog.Close()
+                self.OpenDialog()
+            return True
         self.active = True
         self.connection_state = None
         if (c4d.documents.GetActiveDocument().GetDocumentPath() == '' or 
@@ -146,19 +233,17 @@ class ZyncPlugin(c4d.plugins.CommandData):
         connection_dialog = ZyncConnectionDialog(self)
         c4d.gui.SetMousePointer(c4d.MOUSE_BUSY)
         self.dialog = connection_dialog
-        connection_dialog.Open(dlgtype=c4d.DLG_TYPE_ASYNC, pluginid=PLUGIN_ID, defaultw=400, defaulth=300)
+        self.OpenDialog()
         
         # ZyncConnectionDialog will be polling for the result of connection in its Timer() method.
         thread.start_new_thread(self.ConnectToZync, (zync_python,))
         return True
         
     def ShowMainWindow(self):
-        document = c4d.documents.GetActiveDocument()
-        self.experiment_swapless = self.zync_conn.is_experiment_enabled('EXPERIMENT_SWAPLESS')
-        self.new_project_name = self.zync_conn.get_project_name(document.GetDocumentName())
-
         self.dialog = ZyncMainDialog(self)
+        self.OpenDialog()
         
+    def OpenDialog(self):
         return self.dialog.Open(dlgtype=c4d.DLG_TYPE_ASYNC, pluginid=PLUGIN_ID, defaultw=400, defaulth=300)
         
     def Fail(self):
@@ -171,7 +256,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
             return self.dialog.Restore(pluginid=PLUGIN_ID, secret=sec_ref)
         else:
             return True
-            
+
     def ImportZyncPython(self):
         if os.environ.get('ZYNC_API_DIR'):
             API_DIR = os.environ.get('ZYNC_API_DIR')
@@ -197,9 +282,12 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
     def ConnectToZync(self, zync_python):
         try:
-            self.zync_conn = zync_python.Zync(application='maya')
+            self.zync_conn = zync_python.Zync(application='maya')  # TODO: change for c4d
             self.connection_state = 'success'
         except Exception, e:
+            # TODO: is it really catching everything it should??
+            #
+            # TODO: Seems like zync_python.ZyncAuthenticationError slips through. WTF?
             self.connection_state = ('error', e.message)
             print 'Exception in zync.Zync()'
             print e
@@ -212,7 +300,8 @@ class ZyncPlugin(c4d.plugins.CommandData):
     def CollectDeps(self):
         document = c4d.documents.GetActiveDocument()
         materials = document.GetMaterials()
-        # THIS IS THE "PRETTY" WAY TO GET _JUST NORMAL TEXTURES_
+        ## THIS IS THE "PRETTY" WAY TO GET _JUST NORMAL TEXTURES_
+        ## It is commented out, because it doesn't grab all the deps we are interested in.
         # shaders = (material[c4d.MATERIAL_COLOR_SHADER] for material in materials)
         # texture_paths_with_nones = (shader[c4d.BITMAPSHADER_FILENAME] for shader in shaders)
         # texture_paths = [path for path in texture_paths_with_nones if path is not None]
