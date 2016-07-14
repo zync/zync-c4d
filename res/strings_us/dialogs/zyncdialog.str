@@ -6,7 +6,7 @@
 	VMS_NUM_CAPTION "Number of machines";
 	VMS_TYPE_CAPTION "Machine type";
 	EXAMPLE_MACHINE_NAME "TEST MACHINE WHATEVER (zillion $)";
-	EST_COST "Estimated cost: ???$ ";
+	EST_COST "Estimated hour cost: $00000.00";
 	COST_CALC "Cost calculator";
 	
 	PROJ_TITLE "Cloud storage";

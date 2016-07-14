@@ -42,7 +42,6 @@ class ZyncDialog(gui.GeDialog):
         self.GroupBegin(symbols['DIALOG_TOP_GROUP'], c4d.BFH_SCALEFIT, 1)
         
         self.SetTitle("Connecting to Zync...")
-        self.GroupBegin(symbols['BAR'], c4d.BFH_SCALEFIT, 1)
         
         # TODO: make that text sensible
         self.AddStaticText(
@@ -52,39 +51,11 @@ class ZyncDialog(gui.GeDialog):
             inith=20,
             name="Connecting to Zync...")
         self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
-        self.GroupEnd()
         self.SetTimer(100)
         
         self.GroupEnd()
         
         return True
-        
-    def SetComboboxContent(self, widget_id, child_id_base, options):
-        self.FreeChildren(widget_id)
-        for i, option in enumerate(options):
-            self.AddChild(widget_id, child_id_base+i, option)
-        if options:
-            # select the first option
-            self.SetLong(widget_id, child_id_base)
-        
-    def UpdatePrice(self):
-        # TODO
-        pass
-            
-    def DefaultOutputDir(self, document):
-        # TODO: something sensible
-        return os.path.join(document.GetDocumentPath(), 'output')
-            
-    def CollectCameras(self, document):
-        # TODO: default cameras
-        cameras = []
-        for obj in document.GetObjects():
-            if isinstance(obj, c4d.CameraObject):
-                cameras.append({
-                    'name': obj.GetName(),
-                    'camera': obj
-                })
-        return cameras
 
     def InitValues(self):
         return True
@@ -104,15 +75,17 @@ class ZyncDialog(gui.GeDialog):
             webbrowser.open('http://zync.cloudpricingcalculator.appspot.com')
         elif id == symbols["LAUNCH"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
             self.LaunchJob()
+        elif id == symbols["VMS_NUM"] or id == symbols["VMS_TYPE"]:
+            self.UpdatePrice()
         return True
         
     def Timer(self, msg):
         # There seems to be no good way to create timer outside the dialog,
         # thats why it's here and not directly in ZyncPlugin.
 
+        c4d.gui.SetMousePointer(c4d.MOUSE_BUSY)
         if self.plugin_instance.connection_state:
             self.SetTimer(0)
-            c4d.gui.SetMousePointer(c4d.MOUSE_NORMAL)
             if self.plugin_instance.connection_state == 'success':
                 self.LayoutFlushGroup(symbols['DIALOG_TOP_GROUP'])
                 self.CreateMainDialogLayout()
@@ -121,8 +94,6 @@ class ZyncDialog(gui.GeDialog):
                 gui.MessageDialog("Error while connecting to Zync:\n\n" + self.plugin_instance.connection_state[1].message)
                 self.Close()
                 self.plugin_instance.Fail()
-        else:
-            c4d.gui.SetMousePointer(c4d.MOUSE_BUSY)
         
     def CreateMainDialogLayout(self):
         self.LoadDialogResource(symbols['zyncdialog'])
@@ -130,11 +101,13 @@ class ZyncDialog(gui.GeDialog):
         zync = self.plugin_instance.zync_conn
         document = c4d.documents.GetActiveDocument()
         
+        self.instance_type_names = zync.INSTANCE_TYPES.keys()
+        
         # VMs settings
         self.SetLong(symbols['VMS_NUM'], 1)
         self.SetComboboxContent(symbols['VMS_TYPE'],
                                 symbols['VMS_TYPE_OPTIONS'],
-                                zync.INSTANCE_TYPES)
+                                self.instance_type_names)
         self.UpdatePrice()
 
         # Storage settings (zync project)
@@ -171,6 +144,40 @@ class ZyncDialog(gui.GeDialog):
         
         # Login info
         self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(zync.email))  # TODO: gettext?
+        
+    def SetComboboxContent(self, widget_id, child_id_base, options):
+        self.FreeChildren(widget_id)
+        for i, option in enumerate(options):
+            self.AddChild(widget_id, child_id_base+i, option)
+        if options:
+            # select the first option
+            self.SetLong(widget_id, child_id_base)
+
+    def UpdatePrice(self):
+        if self.instance_type_names:
+            instances_count = self.GetLong(symbols['VMS_NUM'])
+            instance_index = self.GetLong(symbols['VMS_TYPE']) - symbols['VMS_TYPE_OPTIONS']
+            instance_name = self.instance_type_names[instance_index]
+            instance_cost = self.plugin_instance.zync_conn.INSTANCE_TYPES[instance_name]['cost']
+            est_price = instances_count * instance_cost
+        else:
+            est_price = 0
+        self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: ${:.2f}'.format(est_price))
+
+    def DefaultOutputDir(self, document):
+        # TODO: something sensible
+        return os.path.join(document.GetDocumentPath(), 'output')
+            
+    def CollectCameras(self, document):
+        # TODO: default cameras
+        cameras = []
+        for obj in document.GetObjects():
+            if isinstance(obj, c4d.CameraObject):
+                cameras.append({
+                    'name': obj.GetName(),
+                    'camera': obj
+                })
+        return cameras
         
     def LaunchJob(self):
         # TODO: collect actual job data
@@ -220,7 +227,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
             thread.start_new_thread(self.ConnectToZync, (zync_python,))
 
         self.dialog = ZyncDialog(self)
-        self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
+        self.dialog.Open(dlgtype=c4d.DLG_TYPE_ASYNC, pluginid=PLUGIN_ID)
 
         return True
 
