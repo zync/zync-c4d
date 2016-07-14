@@ -49,22 +49,31 @@ class ZyncConnectionDialog(gui.GeDialog):
 
     def CreateLayout(self):
         self.SetTitle("Connecting to Zync...")
-        self.GroupBegin(symbols['BAR'], 0)
+        self.GroupBegin(symbols['BAR'], c4d.BFH_SCALEFIT, 1)
+        
+        # TODO: make that text sensible
         self.AddStaticText(
             id=symbols['FOO'],
-            flags=c4d.BFH_CENTER | c4d.BFV_CENTER,
-            initw=1000,
-            inith=50,
-            name="The plugin is currently connecting to Zync. This operation may take some time.\n\n" +
-                 "If the browser window opens, follow the instructions within there \n" +
-                 "to connect the plugin to your Google account.")
+            flags=c4d.BFH_LEFT | c4d.BFV_CENTER | c4d.BFH_SCALE,
+            initw=500,
+            inith=20,
+            name="Connecting to Zync...")
+        self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
         self.GroupEnd()
         self.SetTimer(100)
+        return True
+    
+    def Command(self, id, msg):
+        if id == symbols["CLOSE"]:
+            self.Close()
+            self.plugin_instance.Fail()
         return True
         
     def Timer(self, msg):
         # There seems to be no good way to create timer outside the dialog,
         # thats why it's here and not directly in ZyncPlugin.
+        
+        print 'Timer'
 
         if self.plugin_instance.connection_state:
             c4d.gui.SetMousePointer(c4d.MOUSE_NORMAL)
@@ -201,6 +210,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
     dialog = None
     active = False
+    connecting = False
     
     def Execute(self, doc):
         if self.active:
@@ -222,33 +232,41 @@ class ZyncPlugin(c4d.plugins.CommandData):
             # no need to connect, just show the window
             self.ShowMainWindow()
             return True
+        
+        if self.connecting:
+            self.ShowConnectingDialog()
+        else:
+            try:
+                zync_python = self.ImportZyncPython()
+            except ZyncException, e:
+                gui.MessageDialog(e.message)
+                print e
+                return False
+        
+            # ZyncConnectionDialog will be polling for the result of connection in its Timer() method.
+            self.connecting = True
+            thread.start_new_thread(self.ConnectToZync, (zync_python,))
+            
+            self.ShowConnectingDialog()
 
-        try:
-            zync_python = self.ImportZyncPython()
-        except ZyncException, e:
-            gui.MessageDialog(e.message)
-            print e
-            return False
+        return True
 
+    def ShowConnectingDialog(self):
         connection_dialog = ZyncConnectionDialog(self)
         c4d.gui.SetMousePointer(c4d.MOUSE_BUSY)
         self.dialog = connection_dialog
         self.OpenDialog()
-        
-        # ZyncConnectionDialog will be polling for the result of connection in its Timer() method.
-        thread.start_new_thread(self.ConnectToZync, (zync_python,))
-        return True
         
     def ShowMainWindow(self):
         self.dialog = ZyncMainDialog(self)
         self.OpenDialog()
         
     def OpenDialog(self):
-        return self.dialog.Open(dlgtype=c4d.DLG_TYPE_ASYNC, pluginid=PLUGIN_ID, defaultw=400, defaulth=300)
+        return self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
         
     def Fail(self):
         # called by ZyncConnectionDialog in case of connection failure
-        self.dialog = none
+        self.dialog = None
         self.active = False
 
     def RestoreLayout(self, sec_ref):
@@ -278,6 +296,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
         sys.path.append(API_DIR)
         import zync
+        
         return zync
 
     def ConnectToZync(self, zync_python):
@@ -291,6 +310,8 @@ class ZyncPlugin(c4d.plugins.CommandData):
             self.connection_state = ('error', e.message)
             print 'Exception in zync.Zync()'
             print e
+        finally:
+            self.connecting = False
 
     def LaunchJob(self):
         self.dialog.Close()
