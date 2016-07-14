@@ -94,7 +94,7 @@ class ZyncDialog(gui.GeDialog):
             self.Close()
             self.plugin_instance.Fail()
         elif id == symbols["LOGOUT"]:
-            self.connection_state = None
+            self.plugin_instance.connection_state = None
             self.plugin_instance.zync_conn.logout()
             del self.plugin_instance.zync_conn
             self.Close()
