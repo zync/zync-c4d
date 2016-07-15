@@ -32,10 +32,87 @@ def read_c4d_symbols():
 symbols = read_c4d_symbols()
 
 
+class FilesDialog(gui.GeDialog):
+    
+    def __init__(self, auto_files, user_files):
+        self.auto_files = auto_files
+        self.user_files = user_files
+        # Box info format: (path, state)
+        # State meaning:
+        #  state = 0: unchecked,
+        #  state = 1: checked,
+        #  state = 2: checked permanently (disabled)
+        self.boxes = []
+        for path in self.auto_files:
+            self.boxes.append((path, 2))
+        for path in self.user_files:
+            self.boxes.append((path, 1))
+        super(FilesDialog, self).__init__()
+
+    def CreateLayout(self):
+        self.SetTitle("Files to upload")
+        
+        self.GroupBegin(symbols['BAZ'], c4d.BFH_SCALEFIT, 1)
+        
+        self.GroupBegin(symbols['FILES_LIST_GROUP'], c4d.BFH_SCALEFIT, 1)
+        self.GroupEnd()
+
+        self.AddButton(symbols['ADD_FILE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Add file...')
+
+        self.GroupBegin(symbols['BAR'], c4d.BFH_SCALEFIT, 2)
+        self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
+        self.AddButton(symbols['OK'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Ok')
+        self.GroupEnd()
+        
+        self.GroupEnd()
+        
+        self.RefreshCheckboxes()
+    
+        return True
+        
+    def RefreshCheckboxes(self):
+        self.LayoutFlushGroup(symbols['FILES_LIST_GROUP'])
+        for i, (path, state) in enumerate(self.boxes):
+            checkbox = self.AddCheckbox(symbols['FILES_LIST_OPTIONS']+i, c4d.BFH_LEFT, 0, 0, name=path)
+            self.SetBool(checkbox, state > 0)
+            if state > 1:
+                self.Enable(checkbox, False)
+        self.LayoutChanged(symbols['FILES_LIST_GROUP'])
+        
+    def ReadCheckboxes(self):
+        self.boxes = [
+            (path, 2 if oldstate == 2 else int(self.GetBool(symbols['FILES_LIST_OPTIONS']+i)))
+            for i, (path, oldstate) in enumerate(self.boxes)
+        ]
+    
+    def Command(self, id, msg):
+        if id == symbols["CLOSE"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            self.Close()
+        elif id == symbols["OK"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            self.ReadCheckboxes()
+            self.user_files = [
+                path for path, state in self.boxes
+                if state == 1
+            ]
+            self.Close()
+        elif id == symbols["ADD_FILE"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            self.AddFile()
+        return True
+
+    def AddFile(self):
+        self.ReadCheckboxes()
+        fname = c4d.storage.LoadDialog()
+        if fname is not None:
+            self.boxes.append((fname, 1))
+            self.RefreshCheckboxes()
+        
+    
 class ZyncDialog(gui.GeDialog):
     
     def __init__(self, plugin_instance):
         self.plugin_instance = plugin_instance
+        self.auto_files = self.plugin_instance.CollectDeps()
+        self.user_files = []
         super(ZyncDialog, self).__init__()
 
     def CreateLayout(self):
@@ -77,8 +154,21 @@ class ZyncDialog(gui.GeDialog):
             self.LaunchJob()
         elif id == symbols["VMS_NUM"] or id == symbols["VMS_TYPE"]:
             self.UpdatePrice()
+        elif id == symbols["FILES_LIST"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            self.ShowFilesList()
         return True
-        
+
+    def ShowFilesList(self):
+        dialog = FilesDialog(self.auto_files, self.user_files)
+        # That is a bit hacky, but it is needed for RestoreLayout in order
+        # to call restore on proper window
+        self.plugin_instance.dialog = dialog
+        try:
+            dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
+            self.user_files = dialog.user_files
+        finally:
+            self.plugin_instance.dialog = self
+
     def Timer(self, msg):
         # There seems to be no good way to create timer outside the dialog,
         # thats why it's here and not directly in ZyncPlugin.
@@ -91,11 +181,13 @@ class ZyncDialog(gui.GeDialog):
                 self.CreateMainDialogLayout()
                 self.LayoutChanged(symbols['DIALOG_TOP_GROUP'])
             else:
-                gui.MessageDialog("Error while connecting to Zync:\n\n" + self.plugin_instance.connection_state[1].message)
+                gui.MessageDialog("Error while connecting to Zync:\n\n" + self.plugin_instance.connection_state[1])
                 self.Close()
                 self.plugin_instance.Fail()
-        
+
     def CreateMainDialogLayout(self):
+        # TODO: move fetching data somewhere else
+        
         self.LoadDialogResource(symbols['zyncdialog'])
         
         zync = self.plugin_instance.zync_conn
@@ -123,7 +215,9 @@ class ZyncDialog(gui.GeDialog):
         self.SetString(symbols['OUTPUT_DIR'], self.DefaultOutputDir(document))
         
         # Renderer settings
-        self.SetLong(symbols['RENDERER'], symbols['REND_C4D'])
+        self.SetComboboxContent(symbols['RENDERER'],
+                                symbols['RENDERER_OPTIONS'],
+                                ['Cinema 4D Standard', 'Cinema 4D Physical'])
         fps = document.GetFps()
         first_frame = document.GetMinTime().GetFrame(fps)
         last_frame  = document.GetMaxTime().GetFrame(fps)
@@ -167,7 +261,7 @@ class ZyncDialog(gui.GeDialog):
     def DefaultOutputDir(self, document):
         # TODO: something sensible
         return os.path.join(document.GetDocumentPath(), 'output')
-            
+
     def CollectCameras(self, document):
         # TODO: default cameras
         cameras = []
@@ -204,6 +298,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
     def Execute(self, doc):
         if self.active:
             # TODO: restore? reopen? anything?
+            # TODO: if we turn modal, then it should never happen
             return True
         self.active = True
         if self.connection_state != 'success':
@@ -227,7 +322,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
             thread.start_new_thread(self.ConnectToZync, (zync_python,))
 
         self.dialog = ZyncDialog(self)
-        self.dialog.Open(dlgtype=c4d.DLG_TYPE_ASYNC, pluginid=PLUGIN_ID)
+        self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
 
         return True
 
@@ -265,25 +360,22 @@ class ZyncPlugin(c4d.plugins.CommandData):
         import zync
         
         return zync
-
+        
     def ConnectToZync(self, zync_python):
         try:
             self.zync_conn = zync_python.Zync(application='maya')  # TODO: change for c4d
             self.connection_state = 'success'
         except Exception, e:
-            # TODO: is it really catching everything it should??
-            #
-            # TODO: Seems like zync_python.ZyncAuthenticationError slips through. WTF?
             self.connection_state = ('error', e.message)
-            print 'Exception in zync.Zync()'
             print e
         finally:
             self.connecting = False
 
     def LaunchJob(self):
         self.dialog.Close()
+        job_files = self.dialog.auto_files + self.dialog.user_files
         self.dialog = None
-        gui.MessageDialog("Boom!\n\n" + '\n'.join(self.CollectDeps()))
+        gui.MessageDialog("Boom!\n\n" + '\n'.join(job_files))
         self.active = False
         
     def CollectDeps(self):

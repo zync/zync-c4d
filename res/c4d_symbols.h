@@ -3,7 +3,7 @@
 //  - Every symbol must be defined on single, separate line,
 //  - Every symbol must have explicit value assigned.
 enum {
-	zyncdialog = 5555,
+	zyncdialog = 101,
 	DIALOG_TOP_GROUP = 1000,
 	VMS_NUM = 1001,
 	VMS_TYPE = 1024,
@@ -20,9 +20,9 @@ enum {
 	JUST_UPLOAD = 1006,
 	NO_UPLOAD = 1007,
 	IGN_MISSING_PLUGINS = 1008,
+	FILES_LIST = 1009,
 	
-	RENDERER = 1009,
-	REND_C4D = 1010,
+	RENDERER = 1010,
 	FRAMES = 1020,
 	STEP = 1021,
 	CHUNK = 1022,
@@ -37,11 +37,15 @@ enum {
 	LAUNCH = 1036,
 	
 	CLOSE = 1037,
+	OK = 1038,
+	ADD_FILE = 1039,
+	FILES_LIST_GROUP = 1040,
 	
 	VMS_TYPE_OPTIONS = 2000,
 	PROJ_NAME_OPTIONS = 3000,
 	RENDERER_OPTIONS = 4000,
-	CAMERA_OPTIONS = 4200,
+	CAMERA_OPTIONS = 5000,
+	FILES_LIST_OPTIONS = 6000,
 	
 	FOO = 9998,
 	BAR = 9997,
