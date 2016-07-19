@@ -294,7 +294,10 @@ class ZyncDialog(gui.GeDialog):
                         'still in alpha, and could be unstable for some workloads.\n\n'
                         'Submit the job anyway?'):
                     return
-            self.plugin_instance.LaunchJob(self.auto_files[0], params)
+            doc_dirpath = self.document.GetDocumentPath()
+            doc_name = self.document.GetDocumentName()
+            doc_path = os.path.join(doc_path, doc_name)
+            self.plugin_instance.LaunchJob(doc_path, params)
 
     def CollectParams(self):
         params = {}
@@ -475,38 +478,10 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
     def CollectDeps(self):
         document = c4d.documents.GetActiveDocument()
-        materials = document.GetMaterials()
-        ## THIS IS THE "PRETTY" WAY TO GET _JUST NORMAL TEXTURES_
-        ## It is commented out, because it doesn't grab all the deps we are interested in.
-        # shaders = (material[c4d.MATERIAL_COLOR_SHADER] for material in materials)
-        # texture_paths_with_nones = (shader[c4d.BITMAPSHADER_FILENAME] for shader in shaders)
-        # texture_paths = [path for path in texture_paths_with_nones if path is not None]
+        textures = document.GetAllTextures()
+        texture_paths = [path for id, path in textures]
 
-        # THIS IS THE AWFUL WAY, BUT SHOULD FIND ANYTHING THAT COULD BE FOUND
-        # IT MAY ALSO FIND _A LOT OF OTHER THINGS_ WHICH WE DO NOT WANT
-
-        # This is an ugly hack, but whatever.
-        meaningful_indices = set(i for i in c4d.__dict__.itervalues() if isinstance(i, int))
-
-        textures = set()
-        for material in materials:
-            for i in meaningful_indices:
-                try:
-                    if material[i] and hasattr(material[i], '__getitem__'):
-                        textures.add(material[i][c4d.BITMAPSHADER_FILENAME])
-                except (AttributeError, IndexError):
-                    pass  # just ignore indices throwing exceptions on read
-
-        doc_path = document.GetDocumentPath()
-        doc_name = document.GetDocumentName()
-        tex_path = os.path.join(doc_path, "tex")
-        textures = list(textures)
-        for i, t in enumerate(textures):
-            if not os.path.isabs(t):
-                # TODO: what about c4d.GetGlobalTexturePath()?
-                textures[i] = os.path.join(tex_path, t)
-
-        return [os.path.join(doc_path, doc_name)] + textures
+        return texture_paths
 
 
 if __name__ == '__main__':
