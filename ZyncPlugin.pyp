@@ -9,12 +9,12 @@ PLUGIN_ID = 1000001  # TODO: get own one, this is test one
 
 def read_c4d_symbols():
     """Returns a dictionary of symbols defined in c4d_symbols.h
-    
+
     Ids for dialog controls are defined in c4d_symbols.h file in an enum
     definition. These definitions are necessary for dialog layout file,
-    and therefore cannot be moved. In order to avoid duplication, this 
+    and therefore cannot be moved. In order to avoid duplication, this
     function reads the symbols.
-    
+
     It uses regex to find the lines in which symbols are defined, so it
     is very fragile and will fail if enum definition differs from expected.
     We just need to write the symbols standard way.
@@ -33,7 +33,7 @@ symbols = read_c4d_symbols()
 
 
 class FilesDialog(gui.GeDialog):
-    
+
     def __init__(self, auto_files, user_files):
         self.auto_files = auto_files
         self.user_files = user_files
@@ -51,9 +51,9 @@ class FilesDialog(gui.GeDialog):
 
     def CreateLayout(self):
         self.SetTitle("Files to upload")
-        
+
         self.GroupBegin(symbols['BAZ'], c4d.BFH_SCALEFIT, 1)
-        
+
         self.GroupBegin(symbols['FILES_LIST_GROUP'], c4d.BFH_SCALEFIT, 1)
         self.GroupEnd()
 
@@ -63,13 +63,13 @@ class FilesDialog(gui.GeDialog):
         self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
         self.AddButton(symbols['OK'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Ok')
         self.GroupEnd()
-        
+
         self.GroupEnd()
-        
+
         self.RefreshCheckboxes()
-    
+
         return True
-        
+
     def RefreshCheckboxes(self):
         self.LayoutFlushGroup(symbols['FILES_LIST_GROUP'])
         for i, (path, state) in enumerate(self.boxes):
@@ -78,13 +78,13 @@ class FilesDialog(gui.GeDialog):
             if state > 1:
                 self.Enable(checkbox, False)
         self.LayoutChanged(symbols['FILES_LIST_GROUP'])
-        
+
     def ReadCheckboxes(self):
         self.boxes = [
             (path, 2 if oldstate == 2 else int(self.GetBool(symbols['FILES_LIST_OPTIONS']+i)))
             for i, (path, oldstate) in enumerate(self.boxes)
         ]
-    
+
     def Command(self, id, msg):
         if id == symbols["CLOSE"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
             self.Close()
@@ -105,13 +105,13 @@ class FilesDialog(gui.GeDialog):
         if fname is not None:
             self.boxes.append((fname, 1))
             self.RefreshCheckboxes()
-        
-    
+
+
 class ZyncDialog(gui.GeDialog):
 
     class ValidationError(Exception):
       pass
-    
+
     def __init__(self, plugin_instance):
         self.plugin_instance = plugin_instance
         self.auto_files = self.plugin_instance.CollectDeps()
@@ -120,9 +120,9 @@ class ZyncDialog(gui.GeDialog):
 
     def CreateLayout(self):
         self.GroupBegin(symbols['DIALOG_TOP_GROUP'], c4d.BFH_SCALEFIT, 1)
-        
+
         self.SetTitle("Connecting to Zync...")
-        
+
         # TODO: make that text sensible
         self.AddStaticText(
             id=symbols['FOO'],
@@ -132,14 +132,14 @@ class ZyncDialog(gui.GeDialog):
             name="Connecting to Zync...")
         self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
         self.SetTimer(100)
-        
+
         self.GroupEnd()
-        
+
         return True
 
     def InitValues(self):
         return True
-    
+
     def Command(self, id, msg):
         if id == symbols["CLOSE"]:
             self.Close()
@@ -190,16 +190,16 @@ class ZyncDialog(gui.GeDialog):
 
     def CreateMainDialogLayout(self):
         # TODO: move fetching data somewhere else
-        
+
         self.LoadDialogResource(symbols['zyncdialog'])
-        
+
         zync = self.plugin_instance.zync_conn
         document = c4d.documents.GetActiveDocument()
         self.document = document
-        
+
         self.instance_types = zync.INSTANCE_TYPES
         self.instance_type_names = self.instance_types.keys()
-        
+
         # VMs settings
         self.SetLong(symbols['VMS_NUM'], 1)
         self.SetComboboxContent(symbols['VMS_TYPE'],
@@ -216,11 +216,11 @@ class ZyncDialog(gui.GeDialog):
         self.SetBool(symbols['NEW_PROJ'], True)
         new_project_name = zync.get_project_name(document.GetDocumentName())  # TODO: anything more sensible?
         self.SetString(symbols['NEW_PROJ_NAME'], new_project_name)
-        
+
         # General job settings
         self.SetLong(symbols['JOB_PRIORITY'], 50)
         self.SetString(symbols['OUTPUT_DIR'], self.DefaultOutputDir(document))
-        
+
         # Renderer settings
         self.renderers_list = ['Cinema 4D Standard', 'Cinema 4D Physical']
         self.SetComboboxContent(symbols['RENDERER'],
@@ -232,21 +232,21 @@ class ZyncDialog(gui.GeDialog):
         self.SetString(symbols['FRAMES'], "{}-{}".format(first_frame, last_frame))
         self.SetLong(symbols['STEP'], 1)
         self.SetLong(symbols['CHUNK'], 10)
-        
+
         # Camera selection
         self.cameras = self.CollectCameras(document)
         self.SetComboboxContent(symbols['CAMERA'],
                                 symbols['CAMERA_OPTIONS'],
                                 (c['name'] for c in self.cameras))
-        
+
         # Resolution
         render_data = document.GetActiveRenderData()
         self.SetLong(symbols['RES_X'], render_data[c4d.RDATA_XRES])
         self.SetLong(symbols['RES_Y'], render_data[c4d.RDATA_YRES])
-        
+
         # Login info
         self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(zync.email))  # TODO: gettext?
-        
+
     def SetComboboxContent(self, widget_id, child_id_base, options):
         self.FreeChildren(widget_id)
         for i, option in enumerate(options):
@@ -314,13 +314,13 @@ class ZyncDialog(gui.GeDialog):
         params['skip_check'] = self.GetBool(symbols['NO_UPLOAD'])
         params['ignore_plugin_errors'] = self.GetBool(symbols['IGN_MISSING_PLUGINS'])
         params['sync_extra_assets'] = int(bool(self.user_files))  # ??? how does it work?
-        
+
         params['project'] = self.document.GetDocumentPath()
         params['out_path'] = self.GetString(symbols['OUTPUT_DIR'])
         if not os.path.isabs(params['out_path']):
             params['out_path'] = os.path.abspath(os.path.join(params['project'],
                                                               params['out_path']))
-                                                              
+
         params['renderer'] = self.ReadComboboxOption(symbols['RENDERER'],
                                                      symbols['RENDERER_OPTIONS'],
                                                      self.renderers_list)
@@ -361,11 +361,11 @@ class ZyncDialog(gui.GeDialog):
 
     def AskClose(self):
         return False  # change to True to disallow closing - to be used during execution?
-        
-        
+
+
 class ZyncException(Exception):
     """Zync Exception class
-    
+
     Nothing special, just to filter our own exceptions.
     """
 
@@ -376,7 +376,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
     active = False
     connecting = False
     connection_state = None
-    
+
     def Execute(self, doc):
         if self.active:
             # TODO: restore? reopen? anything?
@@ -385,7 +385,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
         self.active = True
         if self.connection_state != 'success':
             self.connection_state = None
-        if (c4d.documents.GetActiveDocument().GetDocumentPath() == '' or 
+        if (c4d.documents.GetActiveDocument().GetDocumentPath() == '' or
                 c4d.documents.GetActiveDocument().GetChanged()):
             gui.MessageDialog("You must save the active document before rendering it with Zync.")
             self.active = False
@@ -440,9 +440,9 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
         sys.path.append(API_DIR)
         import zync
-        
+
         return zync
-        
+
     def ConnectToZync(self, zync_python):
         try:
             self.zync_conn = zync_python.Zync(application='maya')  # TODO: change for c4d
@@ -481,13 +481,13 @@ class ZyncPlugin(c4d.plugins.CommandData):
         # shaders = (material[c4d.MATERIAL_COLOR_SHADER] for material in materials)
         # texture_paths_with_nones = (shader[c4d.BITMAPSHADER_FILENAME] for shader in shaders)
         # texture_paths = [path for path in texture_paths_with_nones if path is not None]
-        
+
         # THIS IS THE AWFUL WAY, BUT SHOULD FIND ANYTHING THAT COULD BE FOUND
         # IT MAY ALSO FIND _A LOT OF OTHER THINGS_ WHICH WE DO NOT WANT
-        
+
         # This is an ugly hack, but whatever.
         meaningful_indices = set(i for i in c4d.__dict__.itervalues() if isinstance(i, int))
-        
+
         textures = set()
         for material in materials:
             for i in meaningful_indices:
@@ -505,7 +505,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
             if not os.path.isabs(t):
                 # TODO: what about c4d.GetGlobalTexturePath()?
                 textures[i] = os.path.join(tex_path, t)
-        
+
         return [os.path.join(doc_path, doc_name)] + textures
 
 
