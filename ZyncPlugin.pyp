@@ -192,8 +192,10 @@ class ZyncDialog(gui.GeDialog):
         
         zync = self.plugin_instance.zync_conn
         document = c4d.documents.GetActiveDocument()
+        self.document = document
         
-        self.instance_type_names = zync.INSTANCE_TYPES.keys()
+        self.instance_types = zync.INSTANCE_TYPES
+        self.instance_type_names = self.instance_types.keys()
         
         # VMs settings
         self.SetLong(symbols['VMS_NUM'], 1)
@@ -203,9 +205,10 @@ class ZyncDialog(gui.GeDialog):
         self.UpdatePrice()
 
         # Storage settings (zync project)
+        self.project_list = zync.get_project_list()
         self.SetComboboxContent(symbols['EXISTING_PROJ_NAME'],
                                 symbols['PROJ_NAME_OPTIONS'],
-                                (p['name'] for p in zync.get_project_list()))
+                                (p['name'] for p in self.project_list))
         self.SetBool(symbols['NEW_PROJ'], True)
         new_project_name = zync.get_project_name(document.GetDocumentName())  # TODO: anything more sensible?
         self.SetString(symbols['NEW_PROJ_NAME'], new_project_name)
@@ -215,9 +218,10 @@ class ZyncDialog(gui.GeDialog):
         self.SetString(symbols['OUTPUT_DIR'], self.DefaultOutputDir(document))
         
         # Renderer settings
+        self.renderers_list = ['Cinema 4D Standard', 'Cinema 4D Physical']
         self.SetComboboxContent(symbols['RENDERER'],
                                 symbols['RENDERER_OPTIONS'],
-                                ['Cinema 4D Standard', 'Cinema 4D Physical'])
+                                self.renderers_list)
         fps = document.GetFps()
         first_frame = document.GetMinTime().GetFrame(fps)
         last_frame  = document.GetMaxTime().GetFrame(fps)
@@ -272,10 +276,60 @@ class ZyncDialog(gui.GeDialog):
                     'camera': obj
                 })
         return cameras
-        
+
     def LaunchJob(self):
-        # TODO: collect actual job data
-        self.plugin_instance.LaunchJob()
+        params = {}
+        # TODO:??? params['proj_name'] = self.ReadProjectName()
+        # params['parent_id'] = ???
+        params['upload_only'] = self.GetBool(symbols['JUST_UPLOAD'])
+        # TODO:??? params['start_new_slots'] = self.start_new_slots
+        params['skip_check'] = self.GetBool(symbols['NO_UPLOAD'])
+        # TODO:??? params['notify_complete'] = self.notify_complete
+        # TODO:??? params['project'] = eval_ui('project', text=True)
+        params['sync_extra_assets'] = True  # ???
+        params['out_path'] = self.GetString(symbols['OUTPUT_DIR'])
+        if not os.path.isabs(params['out_path']):
+          raise Exception('outpath not abs') # ???
+        params['ignore_plugin_errors'] = self.GetBool(symbols['IGN_MISSING_PLUGINS'])
+        params['renderer'] = self.ReadComboboxOption(symbols['RENDERER'],
+                                                     symbols['RENDERER_OPTIONS'],
+                                                     self.renderers_list)
+        # TODO:??? params['job_subtype'] = 
+        params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
+        params['num_instances'] = self.GetLong(symbols['VMS_NUM'])
+        instance_type_name = self.ReadComboboxOption(symbols['VMS_TYPE'],
+                                                     symbols['VMS_TYPE_OPTIONS'],
+                                                     self.instance_type_names)
+        params['instance_type'] = self.instance_types[instance_type_name]
+        params['frange'] = self.GetString(symbols['FRAMES'])
+        params['step'] = self.GetString(symbols['STEP'])
+        params['chunk_size'] = self.GetString(symbols['CHUNK'])
+        params['xres'] = self.GetString(symbols['RES_X'])
+        params['yres'] = self.GetString(symbols['RES_Y'])
+        params['use_standalone'] = 0
+        camera = self.ReadComboboxOption(symbols['CAMERA'],
+                                         symbols['CAMERA_OPTIONS'],
+                                         self.cameras)
+        params['camera'] = camera  # TODO: convert camera object to anything sensible
+        # TODO:renderer specific params??
+
+        self.plugin_instance.LaunchJob(self.auto_files[0], params)
+
+    def ReadProjectName(self):
+      if self.GetBool(symbols['NEW_PROJ']):
+        proj_name = self.GetString(symbols['NEW_PROJ_NAME'])
+        # TODO: validate
+        return proj_name
+      else:
+        return self.ReadComboboxOption(symbols['EXISTING_PROJ_NAME'],
+                                       symbols['PROJ_NAME_OPTIONS'],
+                                       self.project_list)['name']
+
+    def ReadComboboxOption(self, widget_id, child_id_base, options):
+      return options[self.ReadComboboxIndex(widget_id, child_id_base)]
+
+    def ReadComboboxIndex(self, widget_id, child_id_base):
+      return self.GetLong(widget_id) - child_id_base
 
     def AskClose(self):
         return False  # change to True to disallow closing - to be used during execution?
@@ -311,7 +365,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
         if not hasattr(self, 'zync_conn') and not self.connecting:
             try:
-                zync_python = self.ImportZyncPython()
+                self.zync_python = self.ImportZyncPython()
             except ZyncException, e:
                 gui.MessageDialog(e.message)
                 print e
@@ -319,7 +373,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
             # ZyncDialog will be polling for the result of connection in its Timer() method.
             self.connecting = True
-            thread.start_new_thread(self.ConnectToZync, (zync_python,))
+            thread.start_new_thread(self.ConnectToZync, (self.zync_python,))
 
         self.dialog = ZyncDialog(self)
         self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
@@ -371,13 +425,26 @@ class ZyncPlugin(c4d.plugins.CommandData):
         finally:
             self.connecting = False
 
-    def LaunchJob(self):
-        self.dialog.Close()
-        job_files = self.dialog.auto_files + self.dialog.user_files
-        self.dialog = None
-        gui.MessageDialog("Boom!\n\n" + '\n'.join(job_files))
-        self.active = False
-        
+    def LaunchJob(self, scene_path, params):
+        try:
+          ####
+          gui.MessageDialog("Params:\n\n{}".format(params))
+          ####
+          self.zync_conn.submit_job('c4d', scene_path, params)
+        except self.zync_python.ZyncPreflightError, e:
+          gui.MessageDialog("Preflight Check Failed:\n{}".format(e))
+        except self.zync_python.ZyncError, e:
+          gui.MessageDialog("ZyncError:\n{}".format(e))
+        except:
+          gui.MessageDialog("Unexpected during job submission")
+          raise
+        else:
+          gui.MessageDialog("Boom!\nJob submitted!")
+        finally:
+          self.dialog.Close()
+          self.dialog = None
+          self.active = False
+
     def CollectDeps(self):
         document = c4d.documents.GetActiveDocument()
         materials = document.GetMaterials()
