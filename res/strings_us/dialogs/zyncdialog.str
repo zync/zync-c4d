@@ -19,7 +19,7 @@
 	JUST_UPLOAD_CAPTION "Just upload files";
 	NO_UPLOAD_CAPTION "Don't upload files";
 	IGN_MISSING_PLUGINS_CAPTION "Ignore missing plugin errors";
-	FILES_LIST_CAPTION "Edit files list...";
+	FILES_LIST_CAPTION "Extra assets...";
 	
 	RENDER_TITLE "Rendering settings";
 	RENDERER_CAPTION "Renderer";

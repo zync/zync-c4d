@@ -108,6 +108,9 @@ class FilesDialog(gui.GeDialog):
         
     
 class ZyncDialog(gui.GeDialog):
+
+    class ValidationError(Exception):
+      pass
     
     def __init__(self, plugin_instance):
         self.plugin_instance = plugin_instance
@@ -206,9 +209,10 @@ class ZyncDialog(gui.GeDialog):
 
         # Storage settings (zync project)
         self.project_list = zync.get_project_list()
+        self.project_names = [p['name'] for p in self.project_list]
         self.SetComboboxContent(symbols['EXISTING_PROJ_NAME'],
                                 symbols['PROJ_NAME_OPTIONS'],
-                                (p['name'] for p in self.project_list))
+                                self.project_names)
         self.SetBool(symbols['NEW_PROJ'], True)
         new_project_name = zync.get_project_name(document.GetDocumentName())  # TODO: anything more sensible?
         self.SetString(symbols['NEW_PROJ_NAME'], new_project_name)
@@ -278,52 +282,76 @@ class ZyncDialog(gui.GeDialog):
         return cameras
 
     def LaunchJob(self):
+        try:
+            params = self.CollectParams()
+        except self.ValidationError, e:
+            gui.MessageDialog(e.message)
+        else:
+            alpha_instance = params['instance_type']
+            if '(ALPHA)' in params['instance_type']:
+                if not c4d.gui.QuestionDialog(
+                        'You\'ve selected an instance type for your job which is '
+                        'still in alpha, and could be unstable for some workloads.\n\n'
+                        'Submit the job anyway?'):
+                    return
+            self.plugin_instance.LaunchJob(self.auto_files[0], params)
+
+    def CollectParams(self):
         params = {}
-        # TODO:??? params['proj_name'] = self.ReadProjectName()
-        # params['parent_id'] = ???
-        params['upload_only'] = self.GetBool(symbols['JUST_UPLOAD'])
-        # TODO:??? params['start_new_slots'] = self.start_new_slots
-        params['skip_check'] = self.GetBool(symbols['NO_UPLOAD'])
-        # TODO:??? params['notify_complete'] = self.notify_complete
-        # TODO:??? params['project'] = eval_ui('project', text=True)
-        params['sync_extra_assets'] = True  # ???
-        params['out_path'] = self.GetString(symbols['OUTPUT_DIR'])
-        if not os.path.isabs(params['out_path']):
-          raise Exception('outpath not abs') # ???
-        params['ignore_plugin_errors'] = self.GetBool(symbols['IGN_MISSING_PLUGINS'])
-        params['renderer'] = self.ReadComboboxOption(symbols['RENDERER'],
-                                                     symbols['RENDERER_OPTIONS'],
-                                                     self.renderers_list)
-        # TODO:??? params['job_subtype'] = 
-        params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
         params['num_instances'] = self.GetLong(symbols['VMS_NUM'])
         instance_type_name = self.ReadComboboxOption(symbols['VMS_TYPE'],
                                                      symbols['VMS_TYPE_OPTIONS'],
                                                      self.instance_type_names)
-        params['instance_type'] = self.instance_types[instance_type_name]
+        params['instance_type'] = instance_type_name
+
+        params['proj_name'] = self.ReadProjectName()
+
+        params['job_subtype'] = 'render'  # ???
+        params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
+        params['start_new_slots'] = 1  # value copied from Maya plugin
+        params['notify_complete'] = 0  # value copied from Maya plugin
+        params['upload_only'] = self.GetBool(symbols['JUST_UPLOAD'])
+        params['skip_check'] = self.GetBool(symbols['NO_UPLOAD'])
+        params['ignore_plugin_errors'] = self.GetBool(symbols['IGN_MISSING_PLUGINS'])
+        params['sync_extra_assets'] = int(bool(self.user_files))  # ??? how does it work?
+        
+        params['project'] = self.document.GetDocumentPath()
+        params['out_path'] = self.GetString(symbols['OUTPUT_DIR'])
+        if not os.path.isabs(params['out_path']):
+            params['out_path'] = os.path.abspath(os.path.join(params['project'],
+                                                              params['out_path']))
+                                                              
+        params['renderer'] = self.ReadComboboxOption(symbols['RENDERER'],
+                                                     symbols['RENDERER_OPTIONS'],
+                                                     self.renderers_list)
+        params['use_standalone'] = 0
         params['frange'] = self.GetString(symbols['FRAMES'])
         params['step'] = self.GetString(symbols['STEP'])
         params['chunk_size'] = self.GetString(symbols['CHUNK'])
         params['xres'] = self.GetString(symbols['RES_X'])
         params['yres'] = self.GetString(symbols['RES_Y'])
-        params['use_standalone'] = 0
         camera = self.ReadComboboxOption(symbols['CAMERA'],
                                          symbols['CAMERA_OPTIONS'],
                                          self.cameras)
-        params['camera'] = camera  # TODO: convert camera object to anything sensible
+        params['camera'] = str(camera)  # TODO: convert camera object to anything sensible
         # TODO:renderer specific params??
-
-        self.plugin_instance.LaunchJob(self.auto_files[0], params)
+        return params
 
     def ReadProjectName(self):
       if self.GetBool(symbols['NEW_PROJ']):
         proj_name = self.GetString(symbols['NEW_PROJ_NAME'])
-        # TODO: validate
+        proj_name = proj_name.strip()
+        if proj_name == '':
+          raise self.ValidationError('You must choose existing project or give valid name for a new one.')
+        if not re.match(r'^[-\w]*$', proj_name):  # TODO: check the regex vs actual rules
+          raise self.ValidationError('Project name \'{}\' contains illegal characters.'.format(proj_name))
+        if proj_name in self.project_names:
+          raise self.ValidationError('Project named \'{}\' already exists.'.format(proj_name))
         return proj_name
       else:
         return self.ReadComboboxOption(symbols['EXISTING_PROJ_NAME'],
                                        symbols['PROJ_NAME_OPTIONS'],
-                                       self.project_list)['name']
+                                       self.project_names)
 
     def ReadComboboxOption(self, widget_id, child_id_base, options):
       return options[self.ReadComboboxIndex(widget_id, child_id_base)]
@@ -428,18 +456,18 @@ class ZyncPlugin(c4d.plugins.CommandData):
     def LaunchJob(self, scene_path, params):
         try:
           ####
-          gui.MessageDialog("Params:\n\n{}".format(params))
+          gui.MessageDialog("Params:\n\n{}".format('\n'.join(map(str, params.iteritems()))))
           ####
           self.zync_conn.submit_job('c4d', scene_path, params)
         except self.zync_python.ZyncPreflightError, e:
-          gui.MessageDialog("Preflight Check Failed:\n{}".format(e))
+          gui.MessageDialog("Preflight Check failed:\n{}".format(e))
         except self.zync_python.ZyncError, e:
-          gui.MessageDialog("ZyncError:\n{}".format(e))
+          gui.MessageDialog("Zync Error:\n{}".format(e))
         except:
-          gui.MessageDialog("Unexpected during job submission")
+          gui.MessageDialog("Unexpected error during job submission")
           raise
         else:
-          gui.MessageDialog("Boom!\nJob submitted!")
+          gui.MessageDialog("Boom!\n\nJob submitted!")
         finally:
           self.dialog.Close()
           self.dialog = None
