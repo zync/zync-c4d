@@ -41,7 +41,7 @@ class FilesDialog(gui.GeDialog):
         # State meaning:
         #  state = 0: unchecked,
         #  state = 1: checked,
-        #  state = 2: checked permanently (disabled)
+        #  state = 2: checked permanently (checked & disabled)
         self.boxes = []
         for path in self.auto_files:
             self.boxes.append((path, 2))
@@ -112,10 +112,9 @@ class ZyncDialog(gui.GeDialog):
     class ValidationError(Exception):
       pass
 
-    def __init__(self, plugin_instance):
+    def __init__(self, plugin_instance, document):
         self.plugin_instance = plugin_instance
-        self.auto_files = self.plugin_instance.CollectDeps()
-        self.user_files = []
+        self.document = document
         super(ZyncDialog, self).__init__()
 
     def CreateLayout(self):
@@ -194,8 +193,11 @@ class ZyncDialog(gui.GeDialog):
         self.LoadDialogResource(symbols['zyncdialog'])
 
         zync = self.plugin_instance.zync_conn
-        document = c4d.documents.GetActiveDocument()
-        self.document = document
+        document = self.document
+
+        self.textures = self.GetDocumentTextures()
+        self.auto_files = self.textures
+        self.user_files = []
 
         self.instance_types = zync.INSTANCE_TYPES
         self.instance_type_names = self.instance_types.keys()
@@ -214,7 +216,7 @@ class ZyncDialog(gui.GeDialog):
                                 symbols['PROJ_NAME_OPTIONS'],
                                 self.project_names)
         self.SetBool(symbols['NEW_PROJ'], True)
-        new_project_name = zync.get_project_name(document.GetDocumentName())  # TODO: anything more sensible?
+        new_project_name = zync.get_project_name(document.GetDocumentName())  # TODO: anything more sensible? Update web part?
         self.SetString(symbols['NEW_PROJ_NAME'], new_project_name)
 
         # General job settings
@@ -266,6 +268,11 @@ class ZyncDialog(gui.GeDialog):
             est_price = 0
         self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: ${:.2f}'.format(est_price))
 
+
+    def GetDocumentTextures(self):
+        return [path for id, path in self.document.GetAllTextures()
+                if not path.startswith('preset:')]
+
     def DefaultOutputDir(self, document):
         # TODO: something sensible
         return os.path.join(document.GetDocumentPath(), 'output')
@@ -287,8 +294,8 @@ class ZyncDialog(gui.GeDialog):
         except self.ValidationError, e:
             gui.MessageDialog(e.message)
         else:
-            alpha_instance = params['instance_type']
             if '(ALPHA)' in params['instance_type']:
+                # TODO: replace standard dialog with something better, without this deceptive call to action on YES
                 if not c4d.gui.QuestionDialog(
                         'You\'ve selected an instance type for your job which is '
                         'still in alpha, and could be unstable for some workloads.\n\n'
@@ -296,8 +303,8 @@ class ZyncDialog(gui.GeDialog):
                     return
             doc_dirpath = self.document.GetDocumentPath()
             doc_name = self.document.GetDocumentName()
-            doc_path = os.path.join(doc_path, doc_name)
-            self.plugin_instance.LaunchJob(doc_path, params)
+            doc_path = os.path.join(doc_dirpath, doc_name)
+            self.plugin_instance.SubmitJob(doc_path, params)
 
     def CollectParams(self):
         params = {}
@@ -338,6 +345,7 @@ class ZyncDialog(gui.GeDialog):
                                          self.cameras)
         params['camera'] = str(camera)  # TODO: convert camera object to anything sensible
         # TODO:renderer specific params??
+        params['texturepaths'] = self.LocateTextures(self.textures)  ## TODO: temporary, for testing
         return params
 
     def ReadProjectName(self):
@@ -361,6 +369,26 @@ class ZyncDialog(gui.GeDialog):
 
     def ReadComboboxIndex(self, widget_id, child_id_base):
       return self.GetLong(widget_id) - child_id_base
+
+    def LocateTextures(self, textures):
+        """Converts relative texture paths to absolute ones"""
+        doc_path = self.document.GetDocumentPath()
+        doc_tex_path = os.path.join(doc_path, 'tex')
+        tex_paths = [doc_tex_path]
+        for i in range(10):
+            glob_path = c4d.GetGlobalTexturePath(i)
+            if glob_path != '':
+                tex_paths.append(glob_path)
+        return [self.LocateTexture(tex, tex_paths) for tex in textures]
+        
+    def LocateTexture(self, texture, tex_paths):
+        if os.path.isabs(texture):
+            return texture
+        for tex_path in tex_paths:
+            abs_path = os.path.join(tex_path, texture)
+            if os.path.exists(abs_path):
+                return abs_path
+        raise self.ValidationError("Unable to locate the texture \"{}\"".format(texture))
 
     def AskClose(self):
         return False  # change to True to disallow closing - to be used during execution?
@@ -388,8 +416,8 @@ class ZyncPlugin(c4d.plugins.CommandData):
         self.active = True
         if self.connection_state != 'success':
             self.connection_state = None
-        if (c4d.documents.GetActiveDocument().GetDocumentPath() == '' or
-                c4d.documents.GetActiveDocument().GetChanged()):
+        document = c4d.documents.GetActiveDocument()
+        if (document.GetDocumentPath() == '' or document.GetChanged()):
             gui.MessageDialog("You must save the active document before rendering it with Zync.")
             self.active = False
             return True
@@ -406,7 +434,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
             self.connecting = True
             thread.start_new_thread(self.ConnectToZync, (self.zync_python,))
 
-        self.dialog = ZyncDialog(self)
+        self.dialog = ZyncDialog(self, document)
         self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
 
         return True
@@ -456,10 +484,13 @@ class ZyncPlugin(c4d.plugins.CommandData):
         finally:
             self.connecting = False
 
-    def LaunchJob(self, scene_path, params):
+    def SubmitJob(self, scene_path, params):
         try:
           ####
-          gui.MessageDialog("Params:\n\n{}".format('\n'.join(map(str, params.iteritems()))))
+          texturepaths = params.pop('texturepaths')
+          gui.MessageDialog("Params:\n\n{}\n\nTexturepaths:\n\n{}".format(
+            '\n'.join(map(str, params.iteritems())),
+            '\n'.join(texturepaths)))
           ####
           self.zync_conn.submit_job('c4d', scene_path, params)
         except self.zync_python.ZyncPreflightError, e:
@@ -475,13 +506,6 @@ class ZyncPlugin(c4d.plugins.CommandData):
           self.dialog.Close()
           self.dialog = None
           self.active = False
-
-    def CollectDeps(self):
-        document = c4d.documents.GetActiveDocument()
-        textures = document.GetAllTextures()
-        texture_paths = [path for id, path in textures]
-
-        return texture_paths
 
 
 if __name__ == '__main__':
