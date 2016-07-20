@@ -380,7 +380,7 @@ class ZyncDialog(gui.GeDialog):
             if glob_path != '':
                 tex_paths.append(glob_path)
         return [self.LocateTexture(tex, tex_paths) for tex in textures]
-        
+
     def LocateTexture(self, texture, tex_paths):
         if os.path.isabs(texture):
             return texture

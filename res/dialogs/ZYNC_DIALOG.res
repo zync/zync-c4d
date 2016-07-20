@@ -1,177 +1,200 @@
 DIALOG ZYNC_DIALOG {
-	NAME DIALOG_TITLE;
-	GROUP {
-	    BORDERSIZE 8,8,8,8;
-		SIZE 500, 0;
-		COLUMNS 2;
-		
-		GROUP {
-	      	COLUMNS 1;
-			GROUP {
-				SIZE 500, 0;
-			    SPACE 4,4;
-			    BORDERSIZE 8,8,8,8;
-			    COLUMNS 2;
-				BORDERSTYLE BORDER_GROUP_IN;
-				NAME VMS_TITLE;
-	
-				STATICTEXT { ALIGN_LEFT; NAME VMS_NUM_CAPTION; }
-				EDITNUMBERARROWS VMS_NUM { ALIGN_RIGHT; SCALE_H; }
+  NAME DIALOG_TITLE;
 
-				STATICTEXT { ALIGN_LEFT; NAME VMS_TYPE_CAPTION; }
-				COMBOBOX VMS_TYPE {
-					ALIGN_RIGHT;
-					SCALE_H;
-				}
-	
-				STATICTEXT EST_PRICE { ALIGN_RIGHT; SCALE_H; NAME EST_COST; }
-				BUTTON COST_CALC_LINK { ALIGN_RIGHT; SIZE 0, 10; NAME COST_CALC; }
-			}
+  // How the columns work:
+  //
+  // I didn't find any official documentation about that, but apparently
+  // subsequent items are put in subsequent columns. That is, if the
+  // number of columns is not set each item will get one column, and
+  // if number is set to e.g. 2, the first item will go to column 1,
+  // second to col 2, third to col 1 and so on.
 
-		    GROUP {
-				SCALE_H;
-				COLUMNS 1;
-				BORDERSTYLE BORDER_GROUP_IN;
-				NAME PROJ_TITLE;
-				RADIOGROUP {
-						SCALE_H;
-				      	COLUMNS 2;
-				    GROUP {
-						SCALE_H;
-				      	COLUMNS 2;
-		
-						RADIOGADGET EXISTING_PROJ {
-							NAME EXISTING_PROJ_NAME;
-						}
-						COMBOBOX EXISTING_PROJ_NAME {
-							SCALE_H;
-							CHILDS {
-							}
-						}
-			
-						RADIOGADGET NEW_PROJ { 
-							NAME NEW_PROJ_NAME;
-						}
-						EDITTEXT NEW_PROJ_NAME { SCALE_H; }
-					}
-				}
-			}
+  GROUP {  // login row
+    SPACE 2,2;
+    BORDERSIZE 4,4,4,4;
+    COLUMNS 2;
+    NAME ACCOUNT_TITLE;
 
-			GROUP {
-				SCALE_H;
-		      	COLUMNS 1;
-				BORDERSTYLE BORDER_GROUP_IN;
-				NAME JOB_TITLE;
+    STATICTEXT LOGGED_LABEL { }
+    BUTTON LOGOUT { NAME LOGOUT_CAPTION; }
+  }  // login row end
 
-				GROUP {
-					SCALE_H;
-			      	COLUMNS 2;
-					STATICTEXT { NAME JOB_PRIORITY_CAPTION; }
-					EDITNUMBERARROWS JOB_PRIORITY { SIZE 30,0; }
-				}
+  GROUP {  // settings row
+    SCALE_H;
+    COLUMNS 2;
 
-				CHECKBOX IGN_MISSING_PLUGINS { NAME IGN_MISSING_PLUGINS_CAPTION; }
+    GROUP {  // job settings section
+      SCALE_H;
+      FIT_V;
+      SPACE 2,2;
+      BORDERSIZE 4,4,4,4;
+      BORDERSTYLE BORDER_GROUP_IN;
+      COLUMNS 1;
+      NAME JOB_TITLE;
 
-				GROUP {
-					SCALE_H;
-			      	COLUMNS 3;
-					STATICTEXT { NAME OUTPUT_CAPTION; }
-					EDITTEXT OUTPUT_DIR { SCALE_H; }
-					BUTTON OUTPUT_DIR_BTN { NAME DOTS; }
-				}
-			}
+      GROUP {
+        SCALE_H;
+        COLUMNS 2;
 
-			GROUP {
-				SCALE_H;
-		      	COLUMNS 2;
-				BORDERSTYLE BORDER_GROUP_IN;
-				NAME FILES_TITLE;
+        STATICTEXT { NAME JOB_PRIORITY_CAPTION; }
+        EDITNUMBERARROWS JOB_PRIORITY { SIZE 30,0; }
+      }
 
-				GROUP {
-		      	COLUMNS 1;
-						CHECKBOX JUST_UPLOAD { NAME JUST_UPLOAD_CAPTION; }
-						CHECKBOX NO_UPLOAD { NAME NO_UPLOAD_CAPTION; }
-				}
+      CHECKBOX IGN_MISSING_PLUGINS { NAME IGN_MISSING_PLUGINS_CAPTION; }
 
-				BUTTON FILES_LIST { ALIGN_RIGHT; SIZE 0,-20; NAME FILES_LIST_CAPTION; }
-			}
-		}
+      GROUP {
+        SCALE_H;
+        COLUMNS 3;
 
-		GROUP {
-	      	COLUMNS 1;
-			GROUP {
-				SCALE_H;
-		      	COLUMNS 1;
-				BORDERSTYLE BORDER_GROUP_IN;
-				NAME RENDER_TITLE;
-		
-				GROUP {
-					SCALE_H;
-			      	COLUMNS 2;
-					STATICTEXT { ALIGN_LEFT; NAME RENDERER_CAPTION; }
-					COMBOBOX RENDERER {
-						ALIGN_RIGHT;
-						SCALE_H;
-						CHILDS {
-							REND_C4D, REND_C4D_NAME;
-						}
-					}
-				}
-		
-				GROUP {
-					SCALE_H;
-			      	COLUMNS 2;
-			
-					STATICTEXT { ALIGN_LEFT; NAME FRAMES_CAPTION; }
-					EDITTEXT FRAMES { ALIGN_RIGHT; SIZE 100,0; }
-			
-					STATICTEXT { ALIGN_LEFT; NAME STEP_CAPTION; }
-					EDITNUMBER STEP { ALIGN_RIGHT; SIZE 100,0; }
+        STATICTEXT { NAME OUTPUT_CAPTION; }
+        EDITTEXT OUTPUT_DIR { SCALE_H; }
+        BUTTON OUTPUT_DIR_BTN { NAME DOTS; }
+      }
+    }  // job settings section end
 
-					STATICTEXT { ALIGN_LEFT; NAME CHUNK_CAPTION; }
-					EDITNUMBER CHUNK { ALIGN_RIGHT; SIZE 100,0; }
-				}
-		
-				GROUP {
-					SCALE_H;
-			      	COLUMNS 2;
-			
-					STATICTEXT { ALIGN_LEFT; NAME CAMERA_CAPTION; }
-					COMBOBOX CAMERA {
-						ALIGN_RIGHT;
-						SCALE_H;
-					}
-				}
-		
-				GROUP {
-					SCALE_H;
-			      	COLUMNS 4;
-			
-					STATICTEXT { NAME RESOLUTION_CAPTION; }
-					EDITNUMBERARROWS RES_X { SIZE 60,0; }
-					STATICTEXT { NAME RESOLUTION_CAPTION2; }
-					EDITNUMBERARROWS RES_Y { SIZE 60,0; }
-				}
-			}
+    GROUP {  // vms section
+      SCALE_H;
+      FIT_V;
+      SPACE 2,2;
+      BORDERSIZE 4,4,4,4;
+      BORDERSTYLE BORDER_GROUP_IN;
+      COLUMNS 2;
+      NAME VMS_TITLE;
 
 
-			GROUP {
-				SCALE_H;
-		      	COLUMNS 1;
-				BORDERSTYLE BORDER_GROUP_IN;
-				NAME ACCOUNT_TITLE;
-		
-				STATICTEXT LOGGED_LABEL { SCALE_H; CENTER_H; NAME LOGGED_AS; }
-				BUTTON LOGOUT { SCALE_H; NAME LOGOUT_CAPTION; }
-			}
-		}
-	}
-	GROUP {
-		SCALE_H;
-		CENTER_H;
-      	COLUMNS 2;
-	    BORDERSIZE 16,16,16,16;
-		BUTTON CLOSE { SCALE_H; SIZE 0, 20; NAME CANCEL; }
-		BUTTON LAUNCH { SCALE_H; SIZE 0, 20; NAME LAUNCH_CAPTION; }
-	}
+      STATICTEXT { NAME VMS_NUM_CAPTION; }
+      EDITNUMBERARROWS VMS_NUM { SCALE_H; }
+
+      STATICTEXT { NAME VMS_TYPE_CAPTION; }
+      COMBOBOX VMS_TYPE {
+        SCALE_H;
+      }
+
+      GROUP {}  // just to push next group to right column
+
+      GROUP {
+        SCALE_H;
+        COLUMNS 2;
+
+        STATICTEXT EST_PRICE { ALIGN_RIGHT; SCALE_H; NAME EST_COST; }
+        BUTTON COST_CALC_LINK { ALIGN_RIGHT; SIZE 0, 10; NAME COST_CALC; }
+      }
+    }  // vms section end
+
+    GROUP {  // job files section
+      SCALE_H;
+      FIT_V;
+      SPACE 2,2;
+      BORDERSIZE 4,4,4,4;
+      BORDERSTYLE BORDER_GROUP_IN;
+      COLUMNS 2;
+      NAME FILES_TITLE;
+
+      GROUP {
+          COLUMNS 1;
+          CHECKBOX JUST_UPLOAD { NAME JUST_UPLOAD_CAPTION; }
+          CHECKBOX NO_UPLOAD { NAME NO_UPLOAD_CAPTION; }
+      }
+
+      BUTTON FILES_LIST { ALIGN_RIGHT; SIZE 0,-20; NAME FILES_LIST_CAPTION; }
+    }  // job files section end
+
+    GROUP {  // cloud storage section
+      SCALE_H;
+      FIT_V;
+      SPACE 2,2;
+      BORDERSIZE 4,4,4,4;
+      BORDERSTYLE BORDER_GROUP_IN;
+      COLUMNS 1;
+      NAME PROJ_TITLE;
+
+      RADIOGROUP {
+        SCALE_H;
+        COLUMNS 1;
+
+        GROUP {
+          SCALE_H;
+          COLUMNS 2;
+
+          GROUP {
+            COLUMNS 1;
+
+            RADIOGADGET EXISTING_PROJ {
+              NAME EXISTING_PROJ_NAME;
+            }
+            RADIOGADGET NEW_PROJ {
+              NAME NEW_PROJ_NAME;
+            }
+          }
+          GROUP {
+            SCALE_H;
+            COLUMNS 1;
+
+            COMBOBOX EXISTING_PROJ_NAME { SCALE_H; }
+            EDITTEXT NEW_PROJ_NAME { SCALE_H; }
+          }
+        }
+      }
+    }  // cloud storage section end
+
+    GROUP {  // frames section
+      SCALE_H;
+      FIT_V;
+      SPACE 2,2;
+      BORDERSIZE 4,4,4,4;
+      BORDERSTYLE BORDER_GROUP_IN;
+      COLUMNS 1;
+      NAME FRAMES_TITLE;
+      COLUMNS 2;
+
+      STATICTEXT { ALIGN_LEFT; NAME FRAMES_CAPTION; }
+      EDITTEXT FRAMES { ALIGN_RIGHT; SIZE 100,0; }
+
+      STATICTEXT { ALIGN_LEFT; NAME STEP_CAPTION; }
+      EDITNUMBER STEP { ALIGN_RIGHT; SIZE 100,0; }
+
+      STATICTEXT { ALIGN_LEFT; NAME CHUNK_CAPTION; }
+      EDITNUMBER CHUNK { ALIGN_RIGHT; SIZE 100,0; }
+    }  // frames section end
+
+    GROUP {  // render settings section
+      SCALE_H;
+      FIT_V;
+      SPACE 2,2;
+      BORDERSIZE 4,4,4,4;
+      BORDERSTYLE BORDER_GROUP_IN;
+      COLUMNS 2;
+      NAME RENDER_TITLE;
+
+      STATICTEXT { NAME RENDERER_CAPTION; }
+      COMBOBOX RENDERER {
+        SCALE_H;
+        CHILDS {
+          REND_C4D, REND_C4D_NAME;
+        }
+      }
+
+      STATICTEXT { NAME CAMERA_CAPTION; }
+      COMBOBOX CAMERA { SCALE_H; }
+
+      STATICTEXT { NAME RESOLUTION_CAPTION; }
+      GROUP {
+        COLUMNS 3;
+
+        EDITNUMBERARROWS RES_X { SIZE 60,0; }
+        STATICTEXT { NAME RESOLUTION_CAPTION2; }
+        EDITNUMBERARROWS RES_Y { SIZE 60,0; }
+      }
+    }  // render settings section end
+  }  // settings row end
+
+  GROUP {  // nav row
+    SCALE_H;
+    CENTER_H;
+    COLUMNS 2;
+    BORDERSIZE 8,8,8,12;
+
+    BUTTON CLOSE { SCALE_H; SIZE 0, 20; NAME CANCEL; }
+    BUTTON LAUNCH { SCALE_H; SIZE 0, 20; NAME LAUNCH_CAPTION; }
+  }  // nav row end
 }
