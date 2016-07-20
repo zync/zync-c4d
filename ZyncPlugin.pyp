@@ -158,6 +158,13 @@ class ZyncDialog(gui.GeDialog):
             self.UpdatePrice()
         elif id == symbols["FILES_LIST"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
             self.ShowFilesList()
+        elif id == symbols["OUTPUT_DIR_BTN"] and not msg[c4d.BFM_ACTION_DP_MENUCLICK]:
+            old_output = self.GetString(symbols["OUTPUT_DIR"])
+            new_output = c4d.storage.LoadDialog(title="Select output directory...",
+                                                flags=c4d.FILESELECT_DIRECTORY,
+                                                def_path=old_output)
+            if new_output:
+              self.SetString(symbols["OUTPUT_DIR"], new_output)
         return True
 
     def ShowFilesList(self):
