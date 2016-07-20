@@ -1,5 +1,5 @@
-  DIALOGSTRINGS zyncdialog
-  {
+DIALOGSTRINGS ZYNC_DIALOG
+{
     DIALOG_TITLE "Render with Zync";
 	
 	VMS_TITLE "Machines setup";
@@ -53,4 +53,4 @@
 	FOO_NAME "Foo";
 	BAR_NAME "Bar";
 	BAZ_NAME "Baz";
-  }
+}

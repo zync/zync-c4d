@@ -190,7 +190,7 @@ class ZyncDialog(gui.GeDialog):
     def CreateMainDialogLayout(self):
         # TODO: move fetching data somewhere else
 
-        self.LoadDialogResource(symbols['zyncdialog'])
+        self.LoadDialogResource(symbols['ZYNC_DIALOG'])
 
         zync = self.plugin_instance.zync_conn
         document = self.document

@@ -3,7 +3,7 @@
 //  - Every symbol must be defined on single, separate line,
 //  - Every symbol must have explicit value assigned.
 enum {
-	zyncdialog = 101,
+	ZYNC_DIALOG = 101,
 	DIALOG_TOP_GROUP = 1000,
 	VMS_NUM = 1001,
 	VMS_TYPE = 1024,
