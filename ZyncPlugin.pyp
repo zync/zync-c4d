@@ -50,28 +50,7 @@ class FilesDialog(gui.GeDialog):
         super(FilesDialog, self).__init__()
 
     def CreateLayout(self):
-        self.SetTitle("Files to upload")
-
-        self.GroupBegin(symbols['BAZ'], c4d.BFH_SCALEFIT | c4d.BFV_SCALEFIT, 1)
-
-        self.ScrollGroupBegin(symbols['FOO'],
-                              flags=c4d.BFH_SCALEFIT | c4d.BFV_SCALEFIT,
-                              scrollflags=c4d.SCROLLGROUP_VERT |
-                                          c4d.SCROLLGROUP_AUTOHORIZ |
-                                          c4d.SCROLLGROUP_BORDERIN,
-                              inith=200)
-        self.GroupBegin(symbols['FILES_LIST_GROUP'], c4d.BFH_SCALEFIT | c4d.BFV_TOP, 1)
-        self.GroupEnd()
-        self.GroupEnd()
-
-        self.AddButton(symbols['ADD_FILE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Add file...')
-
-        self.GroupBegin(symbols['BAR'], c4d.BFH_SCALEFIT, 2)
-        self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
-        self.AddButton(symbols['OK'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Ok')
-        self.GroupEnd()
-
-        self.GroupEnd()
+        self.LoadDialogResource(symbols['FILES_DIALOG'])
 
         self.RefreshCheckboxes()
 
