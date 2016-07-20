@@ -16,10 +16,12 @@
 	JOB_TITLE "General job settings";
 	OUTPUT_CAPTION "Output directory";
 	JOB_PRIORITY_CAPTION "Job priority";
+	IGN_MISSING_PLUGINS_CAPTION "Ignore missing plugin errors";
+
+	FILES_TITLE "Job files";
 	JUST_UPLOAD_CAPTION "Just upload files";
 	NO_UPLOAD_CAPTION "Don't upload files";
-	IGN_MISSING_PLUGINS_CAPTION "Ignore missing plugin errors";
-	FILES_LIST_CAPTION "Extra assets...";
+	FILES_LIST_CAPTION "Change job files list...";
 	
 	RENDER_TITLE "Rendering settings";
 	RENDERER_CAPTION "Renderer";
@@ -46,6 +48,8 @@
 	
 	CANCEL "Cancel";
 	
+	DOTS "...";
+
 	FOO_NAME "Foo";
 	BAR_NAME "Bar";
 	BAZ_NAME "Baz";
