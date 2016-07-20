@@ -142,6 +142,16 @@ class ZyncDialog(gui.GeDialog):
                                                 def_path=old_output)
             if new_output:
               self.SetString(symbols["OUTPUT_DIR"], new_output)
+        elif id == symbols['FRAMES_FROM']:
+          self.SetInt32(symbols['FRAMES_TO'],
+                        value=self.GetInt32(symbols['FRAMES_TO']),
+                        min=self.GetInt32(symbols['FRAMES_FROM']),
+                        max=self.last_frame)
+        elif id == symbols['FRAMES_TO']:
+          self.SetInt32(symbols['FRAMES_FROM'],
+                        value=self.GetInt32(symbols['FRAMES_FROM']),
+                        min=self.first_frame,
+                        max=self.GetInt32(symbols['FRAMES_TO']))
         return True
 
     def ShowFilesList(self):
@@ -187,7 +197,7 @@ class ZyncDialog(gui.GeDialog):
         self.instance_type_names = self.instance_types.keys()
 
         # VMs settings
-        self.SetLong(symbols['VMS_NUM'], 1)
+        self.SetInt32(symbols['VMS_NUM'], 1, min=1)
         self.SetComboboxContent(symbols['VMS_TYPE'],
                                 symbols['VMS_TYPE_OPTIONS'],
                                 self.instance_type_names)
@@ -204,7 +214,7 @@ class ZyncDialog(gui.GeDialog):
         self.SetString(symbols['NEW_PROJ_NAME'], new_project_name)
 
         # General job settings
-        self.SetLong(symbols['JOB_PRIORITY'], 50)
+        self.SetInt32(symbols['JOB_PRIORITY'], 50, min=0)
         self.SetString(symbols['OUTPUT_DIR'], self.DefaultOutputDir(document))
 
         # Renderer settings
@@ -213,11 +223,14 @@ class ZyncDialog(gui.GeDialog):
                                 symbols['RENDERER_OPTIONS'],
                                 self.renderers_list)
         fps = document.GetFps()
-        first_frame = document.GetMinTime().GetFrame(fps)
-        last_frame  = document.GetMaxTime().GetFrame(fps)
-        self.SetString(symbols['FRAMES'], "{}-{}".format(first_frame, last_frame))
-        self.SetLong(symbols['STEP'], 1)
-        self.SetLong(symbols['CHUNK'], 10)
+        self.first_frame = document.GetMinTime().GetFrame(fps)
+        self.last_frame  = document.GetMaxTime().GetFrame(fps)
+        self.SetInt32(symbols['FRAMES_FROM'], self.first_frame,
+                      min=self.first_frame, max=self.last_frame)
+        self.SetInt32(symbols['FRAMES_TO'], self.last_frame,
+                      min=self.first_frame, max=self.last_frame)
+        self.SetInt32(symbols['STEP'], 1, min=1)
+        self.SetInt32(symbols['CHUNK'], 10, min=1)
 
         # Camera selection
         self.cameras = self.CollectCameras(document)
@@ -227,8 +240,8 @@ class ZyncDialog(gui.GeDialog):
 
         # Resolution
         render_data = document.GetActiveRenderData()
-        self.SetLong(symbols['RES_X'], render_data[c4d.RDATA_XRES])
-        self.SetLong(symbols['RES_Y'], render_data[c4d.RDATA_YRES])
+        self.SetInt32(symbols['RES_X'], render_data[c4d.RDATA_XRES], min=1)
+        self.SetInt32(symbols['RES_Y'], render_data[c4d.RDATA_YRES], min=1)
 
         # Login info
         self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(zync.email))  # TODO: gettext?
@@ -239,7 +252,7 @@ class ZyncDialog(gui.GeDialog):
             self.AddChild(widget_id, child_id_base+i, option)
         if options:
             # select the first option
-            self.SetLong(widget_id, child_id_base)
+            self.SetInt32(widget_id, child_id_base)
 
     def UpdatePrice(self):
         if self.instance_type_names:
@@ -319,11 +332,12 @@ class ZyncDialog(gui.GeDialog):
                                                      symbols['RENDERER_OPTIONS'],
                                                      self.renderers_list)
         params['use_standalone'] = 0
-        params['frange'] = self.GetString(symbols['FRAMES'])
-        params['step'] = self.GetString(symbols['STEP'])
-        params['chunk_size'] = self.GetString(symbols['CHUNK'])
-        params['xres'] = self.GetString(symbols['RES_X'])
-        params['yres'] = self.GetString(symbols['RES_Y'])
+        params['frange'] = "{:d}-{:d}".format(self.GetInt32(symbols['FRAMES_FROM']),
+                                              self.GetInt32(symbols['FRAMES_TO']))
+        params['step'] = str(self.GetInt32(symbols['STEP']))
+        params['chunk_size'] = str(self.GetInt32(symbols['CHUNK']))
+        params['xres'] = str(self.GetInt32(symbols['RES_X']))
+        params['yres'] = str(self.GetInt32(symbols['RES_Y']))
         camera = self.ReadComboboxOption(symbols['CAMERA'],
                                          symbols['CAMERA_OPTIONS'],
                                          self.cameras)

@@ -48,6 +48,7 @@ DIALOGSTRINGS ZYNC_DIALOG
   CANCEL "Cancel";
 
   DOTS "...";
+  DASH "-";
 
   FOO_NAME "Foo";
   BAR_NAME "Bar";
