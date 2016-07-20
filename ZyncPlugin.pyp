@@ -106,16 +106,7 @@ class ZyncDialog(gui.GeDialog):
     def CreateLayout(self):
         self.GroupBegin(symbols['DIALOG_TOP_GROUP'], c4d.BFH_SCALEFIT, 1)
 
-        self.SetTitle("Connecting to Zync...")
-
-        # TODO: make that text sensible
-        self.AddStaticText(
-            id=symbols['FOO'],
-            flags=c4d.BFH_LEFT | c4d.BFV_CENTER | c4d.BFH_SCALE,
-            initw=500,
-            inith=20,
-            name="Connecting to Zync...")
-        self.AddButton(symbols['CLOSE'], c4d.BFH_CENTER | c4d.BFV_CENTER, name='Cancel')
+        self.LoadDialogResource(symbols['CONN_DIALOG'])
         self.SetTimer(100)
 
         self.GroupEnd()
