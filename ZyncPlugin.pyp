@@ -1,6 +1,7 @@
 import c4d
 from c4d import gui, plugins
 import os, sys, re, thread, webbrowser
+import traceback
 
 
 dir, file = os.path.split(__file__)
@@ -186,14 +187,14 @@ class ZyncDialog(gui.GeDialog):
 
         self.LoadDialogResource(symbols['ZYNC_DIALOG'])
 
-        zync = self.plugin_instance.zync_conn
+        self.zync_cache = self.plugin_instance.zync_cache
         document = self.document
 
         self.textures = self.GetDocumentTextures()
         self.auto_files = self.textures
         self.user_files = []
 
-        self.instance_types = zync.INSTANCE_TYPES
+        self.instance_types = self.zync_cache['instance_types']
         self.instance_type_names = self.instance_types.keys()
 
         # VMs settings
@@ -204,14 +205,13 @@ class ZyncDialog(gui.GeDialog):
         self.UpdatePrice()
 
         # Storage settings (zync project)
-        self.project_list = zync.get_project_list()
+        self.project_list = self.zync_cache['project_list']
         self.project_names = [p['name'] for p in self.project_list]
         self.SetComboboxContent(symbols['EXISTING_PROJ_NAME'],
                                 symbols['PROJ_NAME_OPTIONS'],
                                 self.project_names)
         self.SetBool(symbols['NEW_PROJ'], True)
-        new_project_name = zync.get_project_name(document.GetDocumentName())  # TODO: anything more sensible? Update web part?
-        self.SetString(symbols['NEW_PROJ_NAME'], new_project_name)
+        self.SetString(symbols['NEW_PROJ_NAME'], self.zync_cache['project_name_hint'])
 
         # General job settings
         self.SetInt32(symbols['JOB_PRIORITY'], 50, min=0)
@@ -244,7 +244,7 @@ class ZyncDialog(gui.GeDialog):
         self.SetInt32(symbols['RES_Y'], render_data[c4d.RDATA_YRES], min=1)
 
         # Login info
-        self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(zync.email))  # TODO: gettext?
+        self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(self.zync_cache['email']))  # TODO: gettext?
 
     def SetComboboxContent(self, widget_id, child_id_base, options):
         self.FreeChildren(widget_id)
@@ -257,14 +257,14 @@ class ZyncDialog(gui.GeDialog):
     def UpdatePrice(self):
         if self.instance_type_names:
             instances_count = self.GetLong(symbols['VMS_NUM'])
-            instance_index = self.GetLong(symbols['VMS_TYPE']) - symbols['VMS_TYPE_OPTIONS']
-            instance_name = self.instance_type_names[instance_index]
-            instance_cost = self.plugin_instance.zync_conn.INSTANCE_TYPES[instance_name]['cost']
+            instance_type_name = self.ReadComboboxOption(symbols['VMS_TYPE'],
+                                                         symbols['VMS_TYPE_OPTIONS'],
+                                                         self.instance_type_names)
+            instance_cost = self.instance_types[instance_type_name]['cost']
             est_price = instances_count * instance_cost
         else:
             est_price = 0
         self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: ${:.2f}'.format(est_price))
-
 
     def GetDocumentTextures(self):
         return [path for id, path in self.document.GetAllTextures()
@@ -407,33 +407,45 @@ class ZyncPlugin(c4d.plugins.CommandData):
     connection_state = None
 
     def Execute(self, doc):
-        if self.active:
-            # TODO: restore? reopen? anything?
-            # TODO: if we turn modal, then it should never happen
-            return True
-        self.active = True
-        if self.connection_state != 'success':
-            self.connection_state = None
-        document = c4d.documents.GetActiveDocument()
-        if (document.GetDocumentPath() == '' or document.GetChanged()):
-            gui.MessageDialog("You must save the active document before rendering it with Zync.")
-            self.active = False
-            return True
+        try:
+            if self.active:
+                # TODO: restore? reopen? anything?
+                # TODO: if we turn modal, then it should never happen
+                return True
+            self.active = True
+            if self.connection_state != 'success':
+                self.connection_state = None
+            document = c4d.documents.GetActiveDocument()
+            if (document.GetDocumentPath() == '' or document.GetChanged()):
+                gui.MessageDialog("You must save the active document before rendering it with Zync.")
+                self.active = False
+                return True
 
-        if not hasattr(self, 'zync_conn') and not self.connecting:
-            try:
-                self.zync_python = self.ImportZyncPython()
-            except ZyncException, e:
-                gui.MessageDialog(e.message)
-                print e
-                return False
+            self.document = document
 
-            # ZyncDialog will be polling for the result of connection in its Timer() method.
-            self.connecting = True
-            thread.start_new_thread(self.ConnectToZync, (self.zync_python,))
+            if not hasattr(self, 'zync_conn') and not self.connecting:
+                try:
+                    self.zync_python = self.ImportZyncPython()
+                except ZyncException, e:
+                    gui.MessageDialog(e.message)
+                    print e.message
+                    traceback.print_exc()
+                    return False
 
-        self.dialog = ZyncDialog(self, document)
-        self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
+                # ZyncDialog will be polling for the result of connection in its Timer() method.
+                self.connecting = True
+                thread.start_new_thread(self.ConnectToZync, (self.zync_python,))
+            elif hasattr(self, 'zync_conn'):
+                self.CacheProjNameHint()
+
+            self.dialog = ZyncDialog(self, document)
+            self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
+        except Exception, e:
+            print e.message
+            traceback.print_exc()
+            c4d.gui.MessageDialog(e.message)
+            self.Fail()
+            return False
 
         return True
 
@@ -475,12 +487,26 @@ class ZyncPlugin(c4d.plugins.CommandData):
     def ConnectToZync(self, zync_python):
         try:
             self.zync_conn = zync_python.Zync(application='maya')  # TODO: change for c4d
+            self.FetchCache()
             self.connection_state = 'success'
         except Exception, e:
             self.connection_state = ('error', e.message)
-            print e
+            print e.message
+            traceback.print_exc()
         finally:
             self.connecting = False
+
+    def FetchCache(self):
+      """Fetches from server all data needed to show the dialog"""
+      self.zync_cache = {}
+      self.zync_cache['instance_types'] = self.zync_conn.INSTANCE_TYPES
+      self.zync_cache['project_list'] = self.zync_conn.get_project_list()
+      self.zync_cache['email'] = self.zync_conn.email
+      self.CacheProjNameHint()
+
+    def CacheProjNameHint(self):
+        self.zync_cache['project_name_hint'] = (
+            self.zync_conn.get_project_name(self.document.GetDocumentName()))  # TODO: fix web implementation
 
     def SubmitJob(self, scene_path, params):
         try:
