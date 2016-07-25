@@ -153,6 +153,12 @@ class ZyncDialog(gui.GeDialog):
                         value=self.GetInt32(symbols['FRAMES_FROM']),
                         min=self.first_frame,
                         max=self.GetInt32(symbols['FRAMES_TO']))
+        elif id == symbols['EXISTING_PROJ_NAME']:
+          self.SetBool(symbols['NEW_PROJ'], False)
+          self.SetBool(symbols['EXISTING_PROJ'], True)
+        elif id == symbols['NEW_PROJ_NAME']:
+          self.SetBool(symbols['EXISTING_PROJ'], False)
+          self.SetBool(symbols['NEW_PROJ'], True)
         return True
 
     def ShowFilesList(self):
@@ -315,25 +321,23 @@ class ZyncDialog(gui.GeDialog):
 
         params['job_subtype'] = 'render'  # ???
         params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
-        params['start_new_slots'] = 1  # value copied from Maya plugin
-        params['notify_complete'] = 0  # value copied from Maya plugin
-        params['upload_only'] = self.GetBool(symbols['JUST_UPLOAD'])
-        params['skip_check'] = self.GetBool(symbols['NO_UPLOAD'])
-        params['ignore_plugin_errors'] = self.GetBool(symbols['IGN_MISSING_PLUGINS'])
-        params['sync_extra_assets'] = int(bool(self.user_files))  # ??? how does it work?
+        params['start_new_slots'] = 1  # value copied from Maya plugin  ####  TODO: what is that? do we need that?
+        params['notify_complete'] = 0  # value copied from Maya plugin  ####  TODO: what is that? do we need that?
+        params['upload_only'] = int(self.GetBool(symbols['JUST_UPLOAD']))
+        params['skip_check'] = int(self.GetBool(symbols['NO_UPLOAD']))
+        params['ignore_plugin_errors'] = int(self.GetBool(symbols['IGN_MISSING_PLUGINS']))
 
         params['project'] = self.document.GetDocumentPath()
-        params['out_path'] = self.GetString(symbols['OUTPUT_DIR'])
-        if not os.path.isabs(params['out_path']):
-            params['out_path'] = os.path.abspath(os.path.join(params['project'],
-                                                              params['out_path']))
+        params['output_dir'] = self.GetString(symbols['OUTPUT_DIR'])
+        if not os.path.isabs(params['output_dir']):
+            params['output_dir'] = os.path.abspath(os.path.join(params['project'],
+                                                                params['output_dir']))
 
         params['renderer'] = self.ReadComboboxOption(symbols['RENDERER'],
                                                      symbols['RENDERER_OPTIONS'],
                                                      self.renderers_list)
-        params['use_standalone'] = 0
-        params['frange'] = "{:d}-{:d}".format(self.GetInt32(symbols['FRAMES_FROM']),
-                                              self.GetInt32(symbols['FRAMES_TO']))
+        params['frame_begin'] = self.GetInt32(symbols['FRAMES_FROM'])
+        params['frame_end'] = self.GetInt32(symbols['FRAMES_TO'])
         params['step'] = str(self.GetInt32(symbols['STEP']))
         params['chunk_size'] = str(self.GetInt32(symbols['CHUNK']))
         params['xres'] = str(self.GetInt32(symbols['RES_X']))
@@ -341,9 +345,12 @@ class ZyncDialog(gui.GeDialog):
         camera = self.ReadComboboxOption(symbols['CAMERA'],
                                          symbols['CAMERA_OPTIONS'],
                                          self.cameras)
-        params['camera'] = str(camera)  # TODO: convert camera object to anything sensible
+        params['camera'] = camera['name']  # TODO: convert camera object to anything sensible
+        params['scene_info'] = {
+            'dependencies': self.LocateTextures(self.textures) + self.user_files,
+            'c4d_version': 'Maya2015'  # TODO: actual c4d version, but now let's find some actual package
+        }
         # TODO:renderer specific params??
-        params['texturepaths'] = self.LocateTextures(self.textures)  ## TODO: temporary, for testing
         return params
 
     def ReadProjectName(self):
@@ -486,7 +493,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
     def ConnectToZync(self, zync_python):
         try:
-            self.zync_conn = zync_python.Zync(application='maya')  # TODO: change for c4d
+            self.zync_conn = zync_python.Zync(application='c4d')
             self.FetchCache()
             self.connection_state = 'success'
         except Exception, e:
@@ -510,12 +517,6 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
     def SubmitJob(self, scene_path, params):
         try:
-          ####
-          texturepaths = params.pop('texturepaths')
-          gui.MessageDialog("Params:\n\n{}\n\nTexturepaths:\n\n{}".format(
-            '\n'.join(map(str, params.iteritems())),
-            '\n'.join(texturepaths)))
-          ####
           self.zync_conn.submit_job('c4d', scene_path, params)
         except self.zync_python.ZyncPreflightError, e:
           gui.MessageDialog("Preflight Check failed:\n{}".format(e))
