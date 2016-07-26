@@ -1,6 +1,11 @@
 DIALOGSTRINGS ZYNC_DIALOG
 {
-  DIALOG_TITLE "Render with Zync";
+  DIALOG_TITLE "New Zync job";
+
+
+  WHAT_TO_DO_TITLE "Job type";
+  RENDER_JOB_NAME "Render scene in Zync";
+  UPLOAD_JOB_NAME "Upload scene files to Zync";
 
   VMS_TITLE "Machines setup";
   VMS_NUM_CAPTION "Number of machines";
@@ -18,10 +23,9 @@ DIALOGSTRINGS ZYNC_DIALOG
   OUTPUT_CAPTION "Output directory";
   JOB_PRIORITY_CAPTION "Job priority";
 
-  FILES_TITLE "Job files";
-  JUST_UPLOAD_CAPTION "Just upload files";
-  NO_UPLOAD_CAPTION "Don't upload files";
-  FILES_LIST_CAPTION "Change job files list...";
+  FILES_TITLE "Auxiliary files";
+  NO_UPLOAD_CAPTION "Skip files upload";
+  FILES_LIST_CAPTION "Select auxiliary files...";
 
   RENDER_TITLE "Render settings";
   RENDERER_CAPTION "Renderer";

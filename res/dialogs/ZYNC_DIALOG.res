@@ -19,6 +19,29 @@ DIALOG ZYNC_DIALOG {
     BUTTON LOGOUT { NAME LOGOUT_CAPTION; }
   }  // login row end
 
+  GROUP {  // what to do row
+      SCALE_H;
+      FIT_V;
+      SPACE 2,2;
+      BORDERSIZE 4,4,4,4;
+      BORDERSTYLE BORDER_GROUP_IN;
+      COLUMNS 1;
+      NAME WHAT_TO_DO_TITLE;
+
+      RADIOGROUP {
+          GROUP {
+              COLUMNS 2;
+
+              RADIOGADGET RENDER_JOB {
+                NAME RENDER_JOB_NAME;
+              }
+              RADIOGADGET UPLOAD_JOB {
+                NAME UPLOAD_JOB_NAME;
+              }
+          }
+      }
+  }  // what to do row end
+
   GROUP {  // settings row
     SCALE_H;
     COLUMNS 2;
@@ -39,8 +62,6 @@ DIALOG ZYNC_DIALOG {
         STATICTEXT { NAME JOB_PRIORITY_CAPTION; }
         EDITNUMBERARROWS JOB_PRIORITY { SIZE 30,0; }
       }
-
-      CHECKBOX IGN_MISSING_PLUGINS { NAME IGN_MISSING_PLUGINS_CAPTION; }
 
       GROUP {
         SCALE_H;
@@ -92,8 +113,8 @@ DIALOG ZYNC_DIALOG {
 
       GROUP {
           COLUMNS 1;
-          CHECKBOX JUST_UPLOAD { NAME JUST_UPLOAD_CAPTION; }
           CHECKBOX NO_UPLOAD { NAME NO_UPLOAD_CAPTION; }
+          CHECKBOX IGN_MISSING_PLUGINS { NAME IGN_MISSING_PLUGINS_CAPTION; }
       }
 
       BUTTON FILES_LIST { ALIGN_RIGHT; SIZE 0,-20; NAME FILES_LIST_CAPTION; }

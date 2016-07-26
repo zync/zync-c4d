@@ -159,6 +159,10 @@ class ZyncDialog(gui.GeDialog):
         elif id == symbols['NEW_PROJ_NAME']:
           self.SetBool(symbols['EXISTING_PROJ'], False)
           self.SetBool(symbols['NEW_PROJ'], True)
+        elif id == symbols['RENDER_JOB']:
+          pass  # TODO: enable all settings
+        elif id == symbols['UPLOAD_JOB']:
+          pass  # TODO: disable inapplicable settings
         return True
 
     def ShowFilesList(self):
@@ -202,6 +206,9 @@ class ZyncDialog(gui.GeDialog):
 
         self.instance_types = self.zync_cache['instance_types']
         self.instance_type_names = self.instance_types.keys()
+
+        # Job type
+        self.SetBool(symbols['RENDER_JOB'], True)
 
         # VMs settings
         self.SetInt32(symbols['VMS_NUM'], 1, min=1)
@@ -323,7 +330,7 @@ class ZyncDialog(gui.GeDialog):
         params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
         params['start_new_slots'] = 1  # value copied from Maya plugin  ####  TODO: what is that? do we need that?
         params['notify_complete'] = 0  # value copied from Maya plugin  ####  TODO: what is that? do we need that?
-        params['upload_only'] = int(self.GetBool(symbols['JUST_UPLOAD']))
+        params['upload_only'] = int(self.GetBool(symbols['UPLOAD_JOB']))
         params['skip_check'] = int(self.GetBool(symbols['NO_UPLOAD']))
         params['ignore_plugin_errors'] = int(self.GetBool(symbols['IGN_MISSING_PLUGINS']))
 
@@ -494,12 +501,15 @@ class ZyncPlugin(c4d.plugins.CommandData):
     def ConnectToZync(self, zync_python):
         try:
             self.zync_conn = zync_python.Zync(application='c4d')
-            self.FetchCache()
+            try:
+                self.FetchCache()
+            except:
+                self.zync_conn.logout()
+                del self.zync_conn
+                raise
             self.connection_state = 'success'
         except Exception, e:
             self.connection_state = ('error', e.message)
-            print e.message
-            traceback.print_exc()
         finally:
             self.connecting = False
 
