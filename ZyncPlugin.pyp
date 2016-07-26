@@ -2,7 +2,8 @@ import c4d
 from c4d import gui, plugins
 import os, sys, re, thread, webbrowser
 import traceback
-
+import multiprocessing
+from multiprocessing.dummy import Pool as ThreadPool
 
 dir, file = os.path.split(__file__)
 
@@ -97,14 +98,45 @@ class FilesDialog(gui.GeDialog):
 class ZyncDialog(gui.GeDialog):
 
     class ValidationError(Exception):
-      pass
+        pass
 
     def __init__(self, plugin_instance, document):
+        self.pool = ThreadPool(processes = 1)
         self.plugin_instance = plugin_instance
         self.document = document
+        self.ConnectToZync(plugin_instance.zync_python)
         super(ZyncDialog, self).__init__()
 
+    def ConnectToZync(self, zync_python):
+        if hasattr(self.plugin_instance, 'zync_conn'):
+            self.zync_conn = self.plugin_instance.zync_conn
+            self.FetchCache()
+        else:
+            self.async_callback = self.OnConnection
+            self.async_result = self.pool.apply_async(lambda: zync_python.Zync(application='c4d'))
+
+    def OnConnection(self, zync_conn):
+        self.plugin_instance.zync_conn = self.zync_conn = zync_conn
+        self.FetchCache()
+
+    def FetchCache(self):
+        self.async_callback = self.OnFetch
+        self.async_result = self.pool.apply_async(self._FetchCache)
+
+    def _FetchCache(self):
+      """Fetches from server all data needed to show the dialog"""
+      self.zync_cache = {}
+      self.zync_cache['instance_types'] = self.zync_conn.INSTANCE_TYPES
+      self.zync_cache['project_list'] = self.zync_conn.get_project_list()
+      self.zync_cache['email'] = self.zync_conn.email
+      self.zync_cache['project_name_hint'] = (
+          self.zync_conn.get_project_name(self.document.GetDocumentName()))  # TODO: fix web implementation
+
+    def OnFetch(self, _):
+        self.CreateMainDialogLayout()
+
     def CreateLayout(self):
+        """Called when dialog opens; creates initial dialog content"""
         self.GroupBegin(symbols['DIALOG_TOP_GROUP'], c4d.BFH_SCALEFIT, 1)
 
         self.LoadDialogResource(symbols['CONN_DIALOG'])
@@ -114,8 +146,23 @@ class ZyncDialog(gui.GeDialog):
 
         return True
 
-    def InitValues(self):
-        return True
+    def Timer(self, msg):
+        if getattr(self, 'async_result', None):
+            try:
+                result = self.async_result.get(0)
+                del self.async_result
+                self.async_callback(result)
+            except multiprocessing.TimeoutError:
+                return
+            except Exception as e:
+                traceback.print_exc()
+                gui.MessageDialog(e.message)
+                self.Close()
+
+    def Close(self):
+        self.plugin_instance.dialog = False
+        self.pool.terminate()
+        return super(ZyncDialog, self).Close()
 
     def Command(self, id, msg):
         if id == symbols["CLOSE"]:
@@ -176,28 +223,11 @@ class ZyncDialog(gui.GeDialog):
         finally:
             self.plugin_instance.dialog = self
 
-    def Timer(self, msg):
-        # There seems to be no good way to create timer outside the dialog,
-        # thats why it's here and not directly in ZyncPlugin.
-
-        c4d.gui.SetMousePointer(c4d.MOUSE_BUSY)
-        if self.plugin_instance.connection_state:
-            self.SetTimer(0)
-            if self.plugin_instance.connection_state == 'success':
-                self.LayoutFlushGroup(symbols['DIALOG_TOP_GROUP'])
-                self.CreateMainDialogLayout()
-                self.LayoutChanged(symbols['DIALOG_TOP_GROUP'])
-            else:
-                gui.MessageDialog("Error while connecting to Zync:\n\n" + self.plugin_instance.connection_state[1])
-                self.Close()
-                self.plugin_instance.Fail()
-
     def CreateMainDialogLayout(self):
-        # TODO: move fetching data somewhere else
+        self.LayoutFlushGroup(symbols['DIALOG_TOP_GROUP'])
 
         self.LoadDialogResource(symbols['ZYNC_DIALOG'])
 
-        self.zync_cache = self.plugin_instance.zync_cache
         document = self.document
 
         self.textures = self.GetDocumentTextures()
@@ -258,6 +288,8 @@ class ZyncDialog(gui.GeDialog):
 
         # Login info
         self.SetString(symbols['LOGGED_LABEL'], 'Logged in as {}'.format(self.zync_cache['email']))  # TODO: gettext?
+
+        self.LayoutChanged(symbols['DIALOG_TOP_GROUP'])
 
     def SetComboboxContent(self, widget_id, child_id_base, options):
         self.FreeChildren(widget_id)
@@ -402,9 +434,6 @@ class ZyncDialog(gui.GeDialog):
                 return abs_path
         raise self.ValidationError("Unable to locate the texture \"{}\"".format(texture))
 
-    def AskClose(self):
-        return False  # change to True to disallow closing - to be used during execution?
-
 
 class ZyncException(Exception):
     """Zync Exception class
@@ -422,43 +451,21 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
     def Execute(self, doc):
         try:
-            if self.active:
-                # TODO: restore? reopen? anything?
-                # TODO: if we turn modal, then it should never happen
-                return True
-            self.active = True
-            if self.connection_state != 'success':
-                self.connection_state = None
             document = c4d.documents.GetActiveDocument()
             if (document.GetDocumentPath() == '' or document.GetChanged()):
                 gui.MessageDialog("You must save the active document before rendering it with Zync.")
-                self.active = False
                 return True
 
-            self.document = document
-
-            if not hasattr(self, 'zync_conn') and not self.connecting:
-                try:
-                    self.zync_python = self.ImportZyncPython()
-                except ZyncException, e:
-                    gui.MessageDialog(e.message)
-                    print e.message
-                    traceback.print_exc()
-                    return False
-
-                # ZyncDialog will be polling for the result of connection in its Timer() method.
-                self.connecting = True
-                thread.start_new_thread(self.ConnectToZync, (self.zync_python,))
-            elif hasattr(self, 'zync_conn'):
-                self.CacheProjNameHint()
+            if not hasattr(self, 'zync_python'):
+                self.zync_python = self.ImportZyncPython()
 
             self.dialog = ZyncDialog(self, document)
-            self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID)
+            if not self.dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL, pluginid=PLUGIN_ID):
+                raise Exception("Failed to open dialog window")
         except Exception, e:
-            print e.message
             traceback.print_exc()
             c4d.gui.MessageDialog(e.message)
-            self.Fail()
+            self.dialog = None
             return False
 
         return True
@@ -466,7 +473,6 @@ class ZyncPlugin(c4d.plugins.CommandData):
     def Fail(self):
         # flushes state in case of closing dialog
         self.dialog = None
-        self.active = False
 
     def RestoreLayout(self, sec_ref):
         if self.dialog:
@@ -497,33 +503,6 @@ class ZyncPlugin(c4d.plugins.CommandData):
         import zync
 
         return zync
-
-    def ConnectToZync(self, zync_python):
-        try:
-            self.zync_conn = zync_python.Zync(application='c4d')
-            try:
-                self.FetchCache()
-            except:
-                self.zync_conn.logout()
-                del self.zync_conn
-                raise
-            self.connection_state = 'success'
-        except Exception, e:
-            self.connection_state = ('error', e.message)
-        finally:
-            self.connecting = False
-
-    def FetchCache(self):
-      """Fetches from server all data needed to show the dialog"""
-      self.zync_cache = {}
-      self.zync_cache['instance_types'] = self.zync_conn.INSTANCE_TYPES
-      self.zync_cache['project_list'] = self.zync_conn.get_project_list()
-      self.zync_cache['email'] = self.zync_conn.email
-      self.CacheProjNameHint()
-
-    def CacheProjNameHint(self):
-        self.zync_cache['project_name_hint'] = (
-            self.zync_conn.get_project_name(self.document.GetDocumentName()))  # TODO: fix web implementation
 
     def SubmitJob(self, scene_path, params):
         try:
