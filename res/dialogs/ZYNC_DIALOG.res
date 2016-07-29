@@ -9,16 +9,6 @@ DIALOG ZYNC_DIALOG {
   // if number is set to e.g. 2, the first item will go to column 1,
   // second to col 2, third to col 1 and so on.
 
-  GROUP {  // login row
-    SPACE 2,2;
-    BORDERSIZE 4,4,4,4;
-    COLUMNS 2;
-    NAME ACCOUNT_TITLE;
-
-    STATICTEXT LOGGED_LABEL { }
-    BUTTON LOGOUT { NAME LOGOUT_CAPTION; }
-  }  // login row end
-
   GROUP {  // what to do row
       SCALE_H;
       FIT_V;
@@ -221,7 +211,6 @@ DIALOG ZYNC_DIALOG {
     COLUMNS 2;
     BORDERSIZE 8,8,8,12;
 
-    BUTTON CLOSE { SCALE_H; SIZE 0, 20; NAME CANCEL; }
     BUTTON LAUNCH { SCALE_H; SIZE 0, 20; NAME LAUNCH_CAPTION; }
   }  // nav row end
 }

@@ -8,7 +8,7 @@ DIALOG CONN_DIALOG {
     STATICTEXT {
       SIZE 500, 0;
       CENTER_V;
-      NAME DIALOG_TITLE;
+      NAME CONNECTING;
     }
 
     BUTTON CLOSE {

@@ -1,9 +1,9 @@
 DIALOGSTRINGS ZYNC_DIALOG
 {
-  DIALOG_TITLE "New Zync job";
+  DIALOG_TITLE "ZYNC";
 
 
-  WHAT_TO_DO_TITLE "Job type";
+  WHAT_TO_DO_TITLE "New job type";
   RENDER_JOB_NAME "Render scene in Zync";
   UPLOAD_JOB_NAME "Upload scene files to Zync";
 
