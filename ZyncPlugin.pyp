@@ -138,14 +138,11 @@ class ZyncDialog(gui.GeDialog):
       callback(result)
 
   def Open(self, *args, **kwargs):
-    if not hasattr(self, 'pool'):
-      self.pool = ThreadPool(processes = 1)
     self.document = c4d.documents.GetActiveDocument()
     return super(ZyncDialog, self).Open(*args, **kwargs)
 
   def Close(self):
-    self.pool.terminate()
-    del self.pool
+    self.KillAsyncCallCall()
     return super(ZyncDialog, self).Close()
 
   def StartAsync(self, func, callback = None, err_callback = None):
@@ -158,23 +155,28 @@ class ZyncDialog(gui.GeDialog):
         + if you really must, get some other function to call SetTimer for you
     """
     assert not hasattr(self, 'async_call')
+    if not hasattr(self, 'pool'):
+      self.pool = ThreadPool(processes=1)
     self.async_call = (self.pool.apply_async(func), callback, err_callback)
     self.SetTimer(100)
+
+  def KillAsyncCallCall(self):
+    if hasattr(self, 'async_call'):
+      del self.async_call
+      self.pool.terminate()
+      del self.pool
 
   def OnConnected(self, connection):
     self.zync_conn = connection
     self.StartAsync(self.FetchAvailableSettings, self.OnFetched,
                     self.OnLoginFail)
 
-  def OnLoginFail(self, exception):
+  def OnLoginFail(self, exception=None):
     del exception
-    self.logged_out = True
-    self.LoadLayout('LOGIN_DIALOG')
-    if hasattr(self, 'zync_conn'):
-      self.zync_conn.logout()
+    self.Logout()
 
   def FetchAvailableSettings(self):
-    self.zync_cache = {
+    return {
       'instance_types': self.zync_conn.INSTANCE_TYPES,
       'project_list': self.zync_conn.get_project_list(),
       'email': self.zync_conn.email,
@@ -182,7 +184,8 @@ class ZyncDialog(gui.GeDialog):
         self.document.GetDocumentName()),  # TODO: fix web implementation
     }
 
-  def OnFetched(self, _):
+  def OnFetched(self, zync_cache):
+    self.zync_cache = zync_cache
     self.LoadLayout('ZYNC_DIALOG')
     self.logged_in = True
     self.InitializeControls()
@@ -296,6 +299,7 @@ class ZyncDialog(gui.GeDialog):
       self.document = document
       self.InitializeControls()
 
+  # list of widgets that should be disabled for upload (no render) jobs
   render_only_settings = ['JOB_SETTINGS_G', 'VMS_SETTINGS_G', 'FRAMES_G',
                           'RENDER_G', 'NO_UPLOAD', 'IGN_MISSING_PLUGINS']
 
@@ -304,13 +308,10 @@ class ZyncDialog(gui.GeDialog):
     if id == symbols['LOGIN']:
       self.Login()
     elif id == symbols["LOGOUT"]:
-      zync_conn = self.zync_conn
-      del self.zync_conn
-      self.logged_in = False
-      self.logged_out = True
-      zync_conn.logout()
-      self.LoadLayout('LOGIN_DIALOG')
+      self.Logout()
       gui.MessageDialog("Logged out from Zync")
+    elif id == symbols["CANCEL_CONN"]:
+      self.Logout()
     elif id == symbols["COST_CALC_LINK"]:
       webbrowser.open('http://zync.cloudpricingcalculator.appspot.com')
     elif id == symbols["VMS_NUM"] or id == symbols["VMS_TYPE"]:
@@ -381,6 +382,16 @@ class ZyncDialog(gui.GeDialog):
     self.StartAsync(lambda: zync.Zync(application='c4d'), self.OnConnected,
                     self.OnLoginFail)
     self.LoadLayout('CONN_DIALOG')
+
+  def Logout(self):
+    self.logged_in = False
+    self.logged_out = True
+    self.LoadLayout('LOGIN_DIALOG')
+    self.KillAsyncCallCall()
+    zync_conn = getattr(self, 'zync_conn', None)
+    if zync_conn:
+      del self.zync_conn
+      zync_conn.logout()
 
   def UpdatePrice(self):
     if self.instance_type_names:
