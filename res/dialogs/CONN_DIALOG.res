@@ -11,7 +11,7 @@ DIALOG CONN_DIALOG {
       NAME CONNECTING;
     }
 
-    BUTTON CLOSE {
+    BUTTON CANCEL_CONN {
       CENTER_H;
       CENTER_V;
       SIZE 0, 20;

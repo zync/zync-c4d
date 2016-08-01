@@ -1,8 +1,0 @@
-DIALOGSTRINGS FILES_DIALOG
-{
-  DIALOG_TITLE "Job files";
-
-  ADD_FILE "Add file...";
-  CANCEL "Cancel";
-  OK "OK";
-}

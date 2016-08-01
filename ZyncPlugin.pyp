@@ -21,7 +21,7 @@ def show_exceptions(func):
       return func(*args, **kwargs)
     except Exception as e:
       if not getattr(e, 'exception_already_shown', False):
-        c4d.gui.MessageDialog('Error:\n\n' + e.message)
+        gui.MessageDialog('Error:\n\n' + e.message)
         e.exception_already_shown = True
       raise
   return wrapped
@@ -41,14 +41,14 @@ def import_zync_python():
   else:
     config_path = os.path.join(os.path.dirname(__file__), 'config_c4d.py')
     if not os.path.exists(config_path):
-      raise ZyncException(
+      raise Exception(
         "Plugin configuration incomplete: zync-python path not provided.\n\n"
         "Re-installing the plugin may solve the problem.")
     import imp
     config_c4d = imp.load_source('config_c4d', config_path)
     API_DIR = config_c4d.API_DIR
     if not isinstance(API_DIR, basestring):
-      raise ZyncException("API_DIR defined in config_c4d.py is not a string")
+      raise Exception("API_DIR defined in config_c4d.py is not a string")
 
   sys.path.append(API_DIR)
   import zync
@@ -81,13 +81,6 @@ def read_c4d_symbols():
 symbols = read_c4d_symbols()
 
 
-class ZyncException(Exception):
-    """Zync Exception class
-
-    Nothing special, just to filter our own exceptions.
-    """
-
-
 class ZyncDialog(gui.GeDialog):
 
   class ValidationError(Exception):
@@ -96,6 +89,7 @@ class ZyncDialog(gui.GeDialog):
   def __init__(self):
     self.logged_out = True
     self.logged_in = False
+    self.autologin = True
     super(ZyncDialog, self).__init__()
 
   @show_exceptions
@@ -104,7 +98,11 @@ class ZyncDialog(gui.GeDialog):
     self.GroupBegin(symbols['DIALOG_TOP_GROUP'], c4d.BFH_SCALEFIT & c4d.BFV_SCALEFIT, 1)
     self.GroupEnd()
 
-    if getattr(self, 'zync_conn', None):
+    if self.autologin:
+      # autologin happens first time the window is opened
+      self.autologin = False
+      self.Login()
+    elif getattr(self, 'zync_conn', None):
       self.LoadLayout('ZYNC_DIALOG')
       # TODO: update widgets?
     elif self.logged_out:
@@ -205,7 +203,7 @@ class ZyncDialog(gui.GeDialog):
     self.MenuSubEnd()
     self.MenuFinished()
 
-    self.user_files = []
+    self.file_boxes = []
 
     self.instance_types = self.zync_cache['instance_types']
     self.instance_type_names = self.instance_types.keys()
@@ -259,6 +257,8 @@ class ZyncDialog(gui.GeDialog):
     self.SetInt32(symbols['RES_X'], render_data[c4d.RDATA_XRES], min=1)
     self.SetInt32(symbols['RES_Y'], render_data[c4d.RDATA_YRES], min=1)
 
+    self.files_boxes = []
+
   def SetComboboxContent(self, widget_id, child_id_base, options):
     self.FreeChildren(widget_id)
     for i, option in enumerate(options):
@@ -296,13 +296,13 @@ class ZyncDialog(gui.GeDialog):
       self.document = document
       self.InitializeControls()
 
+  render_only_settings = ['JOB_SETTINGS_G', 'VMS_SETTINGS_G', 'FRAMES_G',
+                          'RENDER_G', 'NO_UPLOAD', 'IGN_MISSING_PLUGINS']
+
   @show_exceptions
   def Command(self, id, msg):
     if id == symbols['LOGIN']:
-      import_zync_python()
-      self.StartAsync(lambda: zync.Zync(application='c4d'), self.OnConnected,
-                      self.OnLoginFail)
-      self.LoadLayout('CONN_DIALOG')
+      self.Login()
     elif id == symbols["LOGOUT"]:
       zync_conn = self.zync_conn
       del self.zync_conn
@@ -316,7 +316,13 @@ class ZyncDialog(gui.GeDialog):
     elif id == symbols["VMS_NUM"] or id == symbols["VMS_TYPE"]:
       self.UpdatePrice()
     elif id == symbols["FILES_LIST"]:
-      self.ShowFilesList()
+      self.UpdateFileCheckboxes()
+      self.SetInt32(symbols["DIALOG_TABS"], symbols["FILES_TAB"])
+    elif id == symbols["ADD_FILE"]:
+      self.AddFile()
+    elif id == symbols["OK_FILES"]:
+      self.ReadFileCheckboxes()
+      self.SetInt32(symbols["DIALOG_TABS"], symbols["SETTINGS_TAB"])
     elif id == symbols["OUTPUT_DIR_BTN"]:
       old_output = self.GetString(symbols["OUTPUT_DIR"])
       new_output = c4d.storage.LoadDialog(title="Select output directory...",
@@ -340,13 +346,41 @@ class ZyncDialog(gui.GeDialog):
     elif id == symbols['NEW_PROJ_NAME']:
       self.SetBool(symbols['EXISTING_PROJ'], False)
       self.SetBool(symbols['NEW_PROJ'], True)
-    elif id == symbols['RENDER_JOB']:
-      pass  # TODO: enable all settings
-    elif id == symbols['UPLOAD_JOB']:
-      pass  # TODO: disable inapplicable settings
+    elif id == symbols['JOB_KIND']:
+      render_job = self.GetBool(symbols['RENDER_JOB'])
+      for item_name in self.render_only_settings:
+        self.Enable(symbols[item_name], render_job)
+      if not render_job:
+        self.SetBool(symbols['NO_UPLOAD'], False)
     elif id == symbols["LAUNCH"]:
       self.LaunchJob()
     return True
+
+  def UpdateFileCheckboxes(self):
+    self.LayoutFlushGroup(symbols['FILES_LIST_GROUP'])
+    for i, (path, checked) in enumerate(self.file_boxes):
+      checkbox = self.AddCheckbox(symbols['FILES_LIST_OPTIONS']+i, c4d.BFH_LEFT, 0, 0, name=path)
+      self.SetBool(checkbox, checked)
+    self.LayoutChanged(symbols['FILES_LIST_GROUP'])
+
+  def ReadFileCheckboxes(self):
+    self.file_boxes = [
+      (path, self.GetBool(symbols['FILES_LIST_OPTIONS']+i))
+      for i, (path, _) in enumerate(self.file_boxes)
+    ]
+
+  def AddFile(self):
+    self.ReadFileCheckboxes()
+    fname = c4d.storage.LoadDialog()
+    if fname is not None:
+      self.file_boxes.append((fname, True))
+      self.UpdateFileCheckboxes()
+
+  def Login(self):
+    import_zync_python()
+    self.StartAsync(lambda: zync.Zync(application='c4d'), self.OnConnected,
+                    self.OnLoginFail)
+    self.LoadLayout('CONN_DIALOG')
 
   def UpdatePrice(self):
     if self.instance_type_names:
@@ -370,7 +404,7 @@ class ZyncDialog(gui.GeDialog):
     else:
       if '(ALPHA)' in params['instance_type']:
         # TODO: replace standard dialog with something better, without this deceptive call to action on YES
-        alpha_confirmed = c4d.gui.QuestionDialog(
+        alpha_confirmed = gui.QuestionDialog(
           'You\'ve selected an instance type for your job which is '
           'still in alpha, and could be unstable for some workloads.\n\n'
           'Submit the job anyway?')
@@ -398,7 +432,7 @@ class ZyncDialog(gui.GeDialog):
 
   def EnsureSceneSaved(self):
     if self.document.GetDocumentPath() == '' or self.document.GetChanged():
-      c4d.gui.MessageDialog(
+      gui.MessageDialog(
           'The scene file must be saved in order to be uploaded to Zync.')
       return False
     return True
@@ -440,8 +474,9 @@ class ZyncDialog(gui.GeDialog):
                                        symbols['CAMERA_OPTIONS'],
                                        self.cameras)
       params['camera'] = camera['name']  # TODO: convert camera object to anything sensible
+      user_files = [path for (path, checked) in self.file_boxes if checked]
       params['scene_info'] = {
-          'dependencies': self.LocateTextures(self.GetDocumentTextures()) + self.user_files,
+          'dependencies': self.LocateTextures(self.GetDocumentTextures()) + user_files,
           'c4d_version': 'Maya2015'  # TODO: actual c4d version, but now let's find some actual package
       }
       # TODO:renderer specific params??

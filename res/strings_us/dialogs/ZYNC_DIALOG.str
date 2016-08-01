@@ -49,7 +49,11 @@ DIALOGSTRINGS ZYNC_DIALOG
 
   LAUNCH_CAPTION "Launch Zync job";
 
+  OK "OK";
   CANCEL "Cancel";
+  BACK "Back";
+
+  ADD_FILE "Add file...";
 
   DOTS "...";
   DASH "-";
