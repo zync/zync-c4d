@@ -142,10 +142,10 @@ class ZyncDialog(gui.GeDialog):
     return super(ZyncDialog, self).Open(*args, **kwargs)
 
   def Close(self):
-    self.KillAsyncCallCall()
+    self.KillAsyncCall()
     return super(ZyncDialog, self).Close()
 
-  def StartAsync(self, func, callback = None, err_callback = None):
+  def StartAsyncCall(self, func, callback = None, err_callback = None):
     """Starts asynchronous call in separate thread.
 
     Caveats:
@@ -160,7 +160,7 @@ class ZyncDialog(gui.GeDialog):
     self.async_call = (self.pool.apply_async(func), callback, err_callback)
     self.SetTimer(100)
 
-  def KillAsyncCallCall(self):
+  def KillAsyncCall(self):
     if hasattr(self, 'async_call'):
       del self.async_call
       self.pool.terminate()
@@ -168,8 +168,8 @@ class ZyncDialog(gui.GeDialog):
 
   def OnConnected(self, connection):
     self.zync_conn = connection
-    self.StartAsync(self.FetchAvailableSettings, self.OnFetched,
-                    self.OnLoginFail)
+    self.StartAsyncCall(self.FetchAvailableSettings, self.OnFetched,
+                        self.OnLoginFail)
 
   def OnLoginFail(self, exception=None):
     del exception
@@ -379,7 +379,7 @@ class ZyncDialog(gui.GeDialog):
 
   def Login(self):
     import_zync_python()
-    self.StartAsync(lambda: zync.Zync(application='c4d'), self.OnConnected,
+    self.StartAsyncCall(lambda: zync.Zync(application='c4d'), self.OnConnected,
                     self.OnLoginFail)
     self.LoadLayout('CONN_DIALOG')
 
@@ -387,7 +387,7 @@ class ZyncDialog(gui.GeDialog):
     self.logged_in = False
     self.logged_out = True
     self.LoadLayout('LOGIN_DIALOG')
-    self.KillAsyncCallCall()
+    self.KillAsyncCall()
     zync_conn = getattr(self, 'zync_conn', None)
     if zync_conn:
       del self.zync_conn
