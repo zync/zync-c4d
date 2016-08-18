@@ -10,11 +10,11 @@ PLUGIN_ID = 1000001  # TODO: get own one, this is test one
 
 
 def show_exceptions(func):
-  """Error-showing decorator for all entry points
+  '''Error-showing decorator for all entry points
   Catches all exceptions and shows them on the screen and in console before
   re-raising. Uses `exception_already_shown` attribute to prevent showing
   the same exception twice.
-  """
+  '''
   @functools.wraps(func)
   def wrapped(*args, **kwargs):
     try:
@@ -31,7 +31,7 @@ def show_exceptions(func):
 # windows any time earlier. Zync-python is not needed for plugin to load.
 @show_exceptions
 def import_zync_python():
-  """Imports zync-python"""
+  '''Imports zync-python'''
   global zync
   if zync:
     return
@@ -42,13 +42,13 @@ def import_zync_python():
     config_path = os.path.join(os.path.dirname(__file__), 'config_c4d.py')
     if not os.path.exists(config_path):
       raise Exception(
-        "Plugin configuration incomplete: zync-python path not provided.\n\n"
-        "Re-installing the plugin may solve the problem.")
+        'Plugin configuration incomplete: zync-python path not provided.\n\n'
+        'Re-installing the plugin may solve the problem.')
     import imp
     config_c4d = imp.load_source('config_c4d', config_path)
     API_DIR = config_c4d.API_DIR
     if not isinstance(API_DIR, basestring):
-      raise Exception("API_DIR defined in config_c4d.py is not a string")
+      raise Exception('API_DIR defined in config_c4d.py is not a string')
 
   sys.path.append(API_DIR)
   import zync
@@ -57,7 +57,7 @@ def import_zync_python():
 dir, file = os.path.split(__file__)
 
 def read_c4d_symbols():
-  """Returns a dictionary of symbols defined in c4d_symbols.h
+  '''Returns a dictionary of symbols defined in c4d_symbols.h
 
   Ids for dialog controls are defined in c4d_symbols.h file in an enum
   definition. These definitions are necessary for dialog layout file,
@@ -67,9 +67,9 @@ def read_c4d_symbols():
   It uses regex to find the lines in which symbols are defined, so it
   is very fragile and will fail if enum definition differs from expected.
   We just need to write the symbols standard way.
-  """
+  '''
   symbols = {}
-  with open(os.path.join(dir, "res", "c4d_symbols.h"), 'r') as f:
+  with open(os.path.join(dir, 'res', 'c4d_symbols.h'), 'r') as f:
     lines = f.readlines()
   regex = re.compile(r'\s*(\w+)\s*=\s*(\d+)\s*,?\s*(?://.*)?')
   for line in lines:
@@ -94,7 +94,7 @@ class ZyncDialog(gui.GeDialog):
 
   @show_exceptions
   def CreateLayout(self):
-    """Called when dialog opens; creates initial dialog content"""
+    '''Called when dialog opens; creates initial dialog content'''
     self.GroupBegin(symbols['DIALOG_TOP_GROUP'], c4d.BFH_SCALEFIT & c4d.BFV_SCALEFIT, 1)
     self.GroupEnd()
 
@@ -114,10 +114,10 @@ class ZyncDialog(gui.GeDialog):
 
   @show_exceptions
   def Timer(self, msg):
-    """Checks for results of asynchronous calls.
+    '''Checks for results of asynchronous calls.
 
     Calls the main thread callbacks after getting the async call result.
-    """
+    '''
     try:
       async_result, callback, err_callback = self.async_call
     except AttributeError:
@@ -146,14 +146,14 @@ class ZyncDialog(gui.GeDialog):
     return super(ZyncDialog, self).Close()
 
   def StartAsyncCall(self, func, callback = None, err_callback = None):
-    """Starts asynchronous call in separate thread.
+    '''Starts asynchronous call in separate thread.
 
     Caveats:
       - only one async call at time is supported
       - if called before CreateLayout, SetTimer call will have no effect, so
         + don't call it before CreateLayout in the first place
         + if you really must, get some other function to call SetTimer for you
-    """
+    '''
     assert not hasattr(self, 'async_call')
     if not hasattr(self, 'pool'):
       self.pool = ThreadPool(processes=1)
@@ -307,30 +307,30 @@ class ZyncDialog(gui.GeDialog):
   def Command(self, id, msg):
     if id == symbols['LOGIN']:
       self.Login()
-    elif id == symbols["LOGOUT"]:
+    elif id == symbols['LOGOUT']:
       self.Logout()
-      gui.MessageDialog("Logged out from Zync")
-    elif id == symbols["CANCEL_CONN"]:
+      gui.MessageDialog('Logged out from Zync')
+    elif id == symbols['CANCEL_CONN']:
       self.Logout()
-    elif id == symbols["COST_CALC_LINK"]:
+    elif id == symbols['COST_CALC_LINK']:
       webbrowser.open('http://zync.cloudpricingcalculator.appspot.com')
-    elif id == symbols["VMS_NUM"] or id == symbols["VMS_TYPE"]:
+    elif id == symbols['VMS_NUM'] or id == symbols['VMS_TYPE']:
       self.UpdatePrice()
-    elif id == symbols["FILES_LIST"]:
+    elif id == symbols['FILES_LIST']:
       self.UpdateFileCheckboxes()
-      self.SetInt32(symbols["DIALOG_TABS"], symbols["FILES_TAB"])
-    elif id == symbols["ADD_FILE"]:
+      self.SetInt32(symbols['DIALOG_TABS'], symbols['FILES_TAB'])
+    elif id == symbols['ADD_FILE']:
       self.AddFile()
-    elif id == symbols["OK_FILES"]:
+    elif id == symbols['OK_FILES']:
       self.ReadFileCheckboxes()
-      self.SetInt32(symbols["DIALOG_TABS"], symbols["SETTINGS_TAB"])
-    elif id == symbols["OUTPUT_DIR_BTN"]:
-      old_output = self.GetString(symbols["OUTPUT_DIR"])
-      new_output = c4d.storage.LoadDialog(title="Select output directory...",
+      self.SetInt32(symbols['DIALOG_TABS'], symbols['SETTINGS_TAB'])
+    elif id == symbols['OUTPUT_DIR_BTN']:
+      old_output = self.GetString(symbols['OUTPUT_DIR'])
+      new_output = c4d.storage.LoadDialog(title='Select output directory...',
                                           flags=c4d.FILESELECT_DIRECTORY,
                                           def_path=old_output)
       if new_output:
-        self.SetString(symbols["OUTPUT_DIR"], new_output)
+        self.SetString(symbols['OUTPUT_DIR'], new_output)
     elif id == symbols['FRAMES_FROM']:
       self.SetInt32(symbols['FRAMES_TO'],
                     value=self.GetInt32(symbols['FRAMES_TO']),
@@ -353,7 +353,7 @@ class ZyncDialog(gui.GeDialog):
         self.Enable(symbols[item_name], render_job)
       if not render_job:
         self.SetBool(symbols['NO_UPLOAD'], False)
-    elif id == symbols["LAUNCH"]:
+    elif id == symbols['LAUNCH']:
       self.LaunchJob()
     return True
 
@@ -428,14 +428,14 @@ class ZyncDialog(gui.GeDialog):
       try:
         self.zync_conn.submit_job('c4d', doc_path, params)
       except zync.ZyncPreflightError, e:
-        gui.MessageDialog("Preflight Check failed:\n{}".format(e))
+        gui.MessageDialog('Preflight Check failed:\n{}'.format(e))
       except zync.ZyncError, e:
-        gui.MessageDialog("Zync Error:\n{}".format(e))
+        gui.MessageDialog('Zync Error:\n{}'.format(e))
       except:
-        gui.MessageDialog("Unexpected error during job submission")
+        gui.MessageDialog('Unexpected error during job submission')
         raise
       else:
-        gui.MessageDialog("Job submitted!\n\nYou can check the status of job in Zync console.\n\nDon't turn of the client app before upload is complete.")
+        gui.MessageDialog('Job submitted!\n\nYou can check the status of job in Zync console.\n\nDon\'t turn of the client app before upload is complete.')
         # TODO: working link to zync console (or yes/no dialog as easier solution, but it may be annoying)
 
   def EnsureSceneSaved(self):
@@ -517,7 +517,7 @@ class ZyncDialog(gui.GeDialog):
       if not path.startswith('preset:')]
 
   def LocateTextures(self, textures):
-      """Converts relative texture paths to absolute ones"""
+      '''Converts relative texture paths to absolute ones'''
       doc_path = self.document.GetDocumentPath()
       doc_tex_path = os.path.join(doc_path, 'tex')
       tex_paths = [doc_tex_path]
@@ -534,7 +534,7 @@ class ZyncDialog(gui.GeDialog):
           abs_path = os.path.join(tex_path, texture)
           if os.path.exists(abs_path):
               return abs_path
-      raise self.ValidationError("Unable to locate the texture \"{}\"".format(texture))
+      raise self.ValidationError('Unable to locate the texture \'{}\''.format(texture))
 
 
 class ZyncPlugin(c4d.plugins.CommandData):
@@ -546,22 +546,22 @@ class ZyncPlugin(c4d.plugins.CommandData):
   def Execute(self, doc):
     import_zync_python()
     if not self.dialog.Open(dlgtype=c4d.DLG_TYPE_ASYNC, pluginid=PLUGIN_ID):
-      raise Exception("Failed to open dialog window")
+      raise Exception('Failed to open dialog window')
     self.dialog.HandleDocumentChange()
     return True
 
   def RestoreLayout(self, sec_ref):
-    """Makes some c4d magic to keep dialogs working"""
+    '''Makes some c4d magic to keep dialogs working'''
     return self.dialog.Restore(pluginid=PLUGIN_ID, secret=sec_ref)
 
 
 if __name__ == '__main__':
     bmp = c4d.bitmaps.BaseBitmap()
-    bmp.InitWith(os.path.join(dir, "res", "zync.png"))
+    bmp.InitWith(os.path.join(dir, 'res', 'zync.png'))
     plugins.RegisterCommandPlugin(
         id=PLUGIN_ID,
-        str="Render with Zync...",
+        str='Render with Zync...',
         info=c4d.PLUGINFLAG_COMMAND_ICONGADGET,
         icon=bmp,
-        help="Render scene using Zync cloud service",
+        help='Render scene using Zync cloud service',
         dat=ZyncPlugin())
