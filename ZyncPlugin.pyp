@@ -6,7 +6,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 
 zync = None
 
-PLUGIN_ID = 1000001  # TODO: get own one, this is test one
+PLUGIN_ID = 1037862
 
 
 def show_exceptions(func):
