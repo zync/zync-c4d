@@ -57,8 +57,4 @@ DIALOGSTRINGS ZYNC_DIALOG
 
   DOTS "...";
   DASH "-";
-
-  FOO_NAME "Foo";
-  BAR_NAME "Bar";
-  BAZ_NAME "Baz";
 }

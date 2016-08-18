@@ -1,6 +1,6 @@
 # Zync Plugin for Cinema 4D
 
-Tested with Cinema 4D R17.
+Tested with Cinema 4D R17 and R18.
 
 ## zync-python
 

@@ -360,7 +360,7 @@ class ZyncDialog(gui.GeDialog):
   def UpdateFileCheckboxes(self):
     self.LayoutFlushGroup(symbols['FILES_LIST_GROUP'])
     for i, (path, checked) in enumerate(self.file_boxes):
-      checkbox = self.AddCheckbox(symbols['FILES_LIST_OPTIONS']+i, c4d.BFH_LEFT, 0, 0, name=path)
+      checkbox = self.AddCheckbox(symbols['FILES_LIST_OPTIONS'] + i, c4d.BFH_LEFT, 0, 0, name=path)
       self.SetBool(checkbox, checked)
     self.LayoutChanged(symbols['FILES_LIST_GROUP'])
 
@@ -436,10 +436,7 @@ class ZyncDialog(gui.GeDialog):
         raise
       else:
         gui.MessageDialog("Job submitted!\n\nYou can check the status of job in Zync console.\n\nDon't turn of the client app before upload is complete.")
-        # TODO: info about client app
-        # TODO: link to zync console
-      finally:
-        pass  # TODO??
+        # TODO: working link to zync console (or yes/no dialog as easier solution, but it may be annoying)
 
   def EnsureSceneSaved(self):
     if self.document.GetDocumentPath() == '' or self.document.GetChanged():
