@@ -99,7 +99,7 @@ class ZyncDialog(gui.GeDialog):
     self.GroupEnd()
 
     if self.autologin:
-      # autologin happens first time the window is opened
+      # autologin should happen only first time the window is opened
       self.autologin = False
       self.Login()
     elif getattr(self, 'zync_conn', None):
@@ -123,7 +123,7 @@ class ZyncDialog(gui.GeDialog):
     except AttributeError:
       return  # no async call running
     try:
-      result = async_result.get(0)
+      result = async_result.get(timeout=0)
     except multiprocessing.TimeoutError:
       return  # no result yet
     except Exception as e:
@@ -131,11 +131,11 @@ class ZyncDialog(gui.GeDialog):
       if err_callback and err_callback(e):
         return  # err_calback was called and handled the exception
       raise
-
-    self.SetTimer(0)
-    del self.async_call
-    if callback:
-      callback(result)
+    else:
+      self.SetTimer(0)  # turn timer off
+      del self.async_call
+      if callback:
+        callback(result)
 
   def Open(self, *args, **kwargs):
     self.document = c4d.documents.GetActiveDocument()
