@@ -1,0 +1,6 @@
+DIALOGSTRINGS CONN_DIALOG
+{
+  DIALOG_TITLE "ZYNC";
+  CONNECTING "Connecting to Zync...";
+  CANCEL "Cancel";
+}

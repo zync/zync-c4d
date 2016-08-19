@@ -1,0 +1,5 @@
+DIALOGSTRINGS LOGIN_DIALOG
+{
+  DIALOG_TITLE "ZYNC";
+  LOGIN "Log in with your Google account";
+}
