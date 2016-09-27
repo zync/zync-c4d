@@ -1,12 +1,17 @@
+from __future__ import division
+
 import c4d
 from c4d import gui, plugins
-import functools, os, sys, re, thread, webbrowser
+import functools, os, sys, re, thread, traceback, webbrowser
 import multiprocessing
 from multiprocessing.dummy import Pool as ThreadPool
+import json
 
 zync = None
 
 PLUGIN_ID = 1037862
+
+plugin_dir = os.path.dirname(__file__)
 
 
 def show_exceptions(func):
@@ -21,7 +26,7 @@ def show_exceptions(func):
       return func(*args, **kwargs)
     except Exception as e:
       if not getattr(e, 'exception_already_shown', False):
-        gui.MessageDialog('Error:\n\n' + e.message)
+        gui.MessageDialog('{}:\n\n{}'.format(e.__class__.__name__, unicode(e)))
         e.exception_already_shown = True
       raise
   return wrapped
@@ -39,7 +44,7 @@ def import_zync_python():
   if os.environ.get('ZYNC_API_DIR'):
     API_DIR = os.environ.get('ZYNC_API_DIR')
   else:
-    config_path = os.path.join(os.path.dirname(__file__), 'config_c4d.py')
+    config_path = os.path.join(plugin_dir, 'config_c4d.py')
     if not os.path.exists(config_path):
       raise Exception(
         'Plugin configuration incomplete: zync-python path not provided.\n\n'
@@ -52,9 +57,6 @@ def import_zync_python():
 
   sys.path.append(API_DIR)
   import zync
-
-
-dir, file = os.path.split(__file__)
 
 def read_c4d_symbols():
   '''Returns a dictionary of symbols defined in c4d_symbols.h
@@ -69,7 +71,7 @@ def read_c4d_symbols():
   We just need to write the symbols standard way.
   '''
   symbols = {}
-  with open(os.path.join(dir, 'res', 'c4d_symbols.h'), 'r') as f:
+  with open(os.path.join(plugin_dir, 'res', 'c4d_symbols.h'), 'r') as f:
     lines = f.readlines()
   regex = re.compile(r'\s*(\w+)\s*=\s*(\d+)\s*,?\s*(?://.*)?')
   for line in lines:
@@ -85,6 +87,29 @@ class ZyncDialog(gui.GeDialog):
 
   class ValidationError(Exception):
     pass
+
+  # These lists are lists of enums values/PLUGIN_IDs, not names!
+  c4d_renderers = [c4d.RDATA_RENDERENGINE_STANDARD,
+                   c4d.RDATA_RENDERENGINE_PHYSICAL]
+  supported_renderers = c4d_renderers + []
+
+  supported_oformats = {
+    c4d.FILTER_B3D: 'B3D',
+    c4d.FILTER_BMP: 'BMP',
+    c4d.FILTER_DPX: 'DPX',
+    c4d.FILTER_EXR: 'EXR',
+    c4d.FILTER_HDR: 'HDR',
+    c4d.FILTER_IFF: 'IFF',
+    c4d.FILTER_JPG: 'JPG',
+    c4d.FILTER_PICT: 'PICT',
+    c4d.FILTER_PNG: 'PNG',
+    c4d.FILTER_PSB: 'PSB',
+    c4d.FILTER_PSD: 'PSD',
+    c4d.FILTER_RLA: 'RLA',
+    c4d.FILTER_RPF: 'RPF',
+    c4d.FILTER_TGA: 'TGA',
+    c4d.FILTER_TIF: 'TIFF',
+  }
 
   def __init__(self):
     self.logged_out = True
@@ -104,7 +129,7 @@ class ZyncDialog(gui.GeDialog):
       self.Login()
     elif getattr(self, 'zync_conn', None):
       self.LoadLayout('ZYNC_DIALOG')
-      # TODO: update widgets?
+      self.InitializeControls()
     elif self.logged_out:
       self.LoadLayout('LOGIN_DIALOG')
     else:
@@ -141,6 +166,7 @@ class ZyncDialog(gui.GeDialog):
     self.document = c4d.documents.GetActiveDocument()
     return super(ZyncDialog, self).Open(*args, **kwargs)
 
+  @show_exceptions
   def Close(self):
     self.KillAsyncCall()
     return super(ZyncDialog, self).Close()
@@ -177,7 +203,10 @@ class ZyncDialog(gui.GeDialog):
 
   def FetchAvailableSettings(self):
     return {
-      'instance_types': self.zync_conn.INSTANCE_TYPES,
+      'instance_types': {
+        external_renderer: self.GetInstanceTypes(external_renderer)
+        for external_renderer in [None]
+      },
       'project_list': self.zync_conn.get_project_list(),
       'email': self.zync_conn.email,
       'project_name_hint': self.zync_conn.get_project_name(
@@ -189,6 +218,22 @@ class ZyncDialog(gui.GeDialog):
     self.LoadLayout('ZYNC_DIALOG')
     self.logged_in = True
     self.InitializeControls()
+
+  def GetInstanceTypes(self, external_renderer):
+    instance_types_dict = self.zync_conn.get_instance_types(
+      renderer=external_renderer)
+    instance_types = [
+      {
+        'order': properties['order'],
+        'name': name,
+        'cost': properties['cost'],
+        'label': '{} (${})'.format(name, properties['cost']),
+      }
+      for name, properties in instance_types_dict.iteritems()
+    ]
+    instance_types.sort(key=lambda instance_type: instance_type['order'])
+
+    return instance_types
 
   def LoadLayout(self, layout_name):
     self.LayoutFlushGroup(symbols['DIALOG_TOP_GROUP'])
@@ -202,88 +247,61 @@ class ZyncDialog(gui.GeDialog):
 
     self.MenuFlushAll()
     self.MenuSubBegin('Logged in as {}'.format(self.zync_cache['email']))
-    self.MenuAddString(symbols['LOGOUT'], 'Log out')
+    self.MenuSubEnd()
+    self.MenuSubBegin('Log out')
+    self.MenuAddString(symbols['LOGOUT'], 'Log out from Zync')
     self.MenuSubEnd()
     self.MenuFinished()
 
-    self.file_boxes = []
-
-    self.instance_types = self.zync_cache['instance_types']
-    self.instance_type_names = self.instance_types.keys()
-
-    # Job type
-    self.SetBool(symbols['RENDER_JOB'], True)
+    self.available_instance_types = []
 
     # VMs settings
     self.SetInt32(symbols['VMS_NUM'], 1, min=1)
-    self.SetComboboxContent(symbols['VMS_TYPE'],
-                            symbols['VMS_TYPE_OPTIONS'],
-                            self.instance_type_names)
-    self.UpdatePrice()
 
     # Storage settings (zync project)
     self.project_list = self.zync_cache['project_list']
     self.project_names = [p['name'] for p in self.project_list]
+    project_name_hint = re.sub(r'\.c4d$', '', document.GetDocumentName())
     self.SetComboboxContent(symbols['EXISTING_PROJ_NAME'],
                             symbols['PROJ_NAME_OPTIONS'],
                             self.project_names)
-    self.SetBool(symbols['NEW_PROJ'], True)
-    self.SetString(symbols['NEW_PROJ_NAME'], self.zync_cache['project_name_hint'])
+    self.SetString(symbols['NEW_PROJ_NAME'], project_name_hint)
+    if project_name_hint in self.project_names:
+      self.SetBool(symbols['EXISTING_PROJ'], True)
+      self.SetBool(symbols['NEW_PROJ'], False)
+      self.SetInt32(symbols['EXISTING_PROJ_NAME'],
+                    symbols['PROJ_NAME_OPTIONS'] + self.project_names.index(project_name_hint))
+    else:
+      self.SetBool(symbols['EXISTING_PROJ'], False)
+      self.SetBool(symbols['NEW_PROJ'], True)
 
     # General job settings
     self.SetInt32(symbols['JOB_PRIORITY'], 50, min=0)
-    self.SetString(symbols['OUTPUT_DIR'], self.DefaultOutputDir(document))
+    self.SetString(symbols['OUTPUT_PATH'], self.DefaultOutputPath(document))
 
     # Renderer settings
-    self.renderers_list = ['Cinema 4D Standard', 'Cinema 4D Physical']
-    self.SetComboboxContent(symbols['RENDERER'],
-                            symbols['RENDERER_OPTIONS'],
-                            self.renderers_list)
-    fps = document.GetFps()
-    self.first_frame = document.GetMinTime().GetFrame(fps)
-    self.last_frame  = document.GetMaxTime().GetFrame(fps)
-    self.SetInt32(symbols['FRAMES_FROM'], self.first_frame,
-                  min=self.first_frame, max=self.last_frame)
-    self.SetInt32(symbols['FRAMES_TO'], self.last_frame,
-                  min=self.first_frame, max=self.last_frame)
-    self.SetInt32(symbols['STEP'], 1, min=1)
     self.SetInt32(symbols['CHUNK'], 10, min=1)
 
-    # Camera selection
-    self.cameras = self.CollectCameras(document)
-    self.SetComboboxContent(symbols['CAMERA'],
-                            symbols['CAMERA_OPTIONS'],
-                            (c['name'] for c in self.cameras))
+    # File management
+    self.SetBool(symbols['UPLOAD_ONLY'], False)
 
-    # Resolution
-    render_data = document.GetActiveRenderData()
-    self.SetInt32(symbols['RES_X'], render_data[c4d.RDATA_XRES], min=1)
-    self.SetInt32(symbols['RES_Y'], render_data[c4d.RDATA_YRES], min=1)
+    self.file_boxes = []
+    self.UpdateFileCheckboxes()
 
-    self.files_boxes = []
+    # Take
+    self.take = None
+    self.RecreateTakeList()
 
   def SetComboboxContent(self, widget_id, child_id_base, options):
     self.FreeChildren(widget_id)
     for i, option in enumerate(options):
       self.AddChild(widget_id, child_id_base+i, option)
-    if options:
-      # select the first option
-      self.SetInt32(widget_id, child_id_base)
+    # select the first option or make blank if no options
+    self.SetInt32(widget_id, child_id_base if options else 0)
 
-  def DefaultOutputDir(self, document):
-    # TODO: something sensible
-    return os.path.join(document.GetDocumentPath(), 'output')
-
-  def CollectCameras(self, document):
-    # TODO: default cameras
-    cameras = []
-    for obj in document.GetObjects():
-      if isinstance(obj, c4d.CameraObject):
-        cameras.append({
-          'name': obj.GetName(),
-          'camera': obj
-        })
-    return cameras
+  def DefaultOutputPath(self, document):
+    return os.path.join(document.GetDocumentPath(), 'renders', '$take',
+                        re.sub(r'\.c4d$', '', document.GetDocumentName()))
 
   @show_exceptions
   def CoreMessage(self, id, msg):
@@ -295,13 +313,132 @@ class ZyncDialog(gui.GeDialog):
     # Reinitialize dialog in case active document was changed.
     # TODO: change launch button if document is in dirty state?
     document = c4d.documents.GetActiveDocument()
-    if self.logged_in and self.document is not document:
-      self.document = document
-      self.InitializeControls()
+    if self.logged_in:
+      try:
+        # comparison may fail with ReferenceError if old scene object
+        # is already dead
+        doc_switched = (self.document != document or
+                        self.document.GetDocumentPath() != document.GetDocumentPath())
+      except ReferenceError:
+        doc_switched = True
+      if doc_switched:
+        self.document = document
+        self.InitializeControls()
+      else:
+        # The active document is still the same one, but it could have
+        # been changed
+        self.RecreateTakeList()
+        # TODO:
+        # We could add support for render data changes, project info changes
 
-  # list of widgets that should be disabled for upload (no render) jobs
+  def RecreateTakeList(self):
+    self.take_names, self.take_labels, self.takes = self.CollectTakes()
+    self.SetComboboxContent(symbols['TAKE'],
+                            symbols['TAKE_OPTIONS'],
+                            self.take_labels)
+
+    # SetComboboxContent selected first entry, but we want to keep
+    # previous selection if that take still exists:
+    for i, take in enumerate(self.takes):
+      if take == self.take:
+        # Previously selected take found, select it again
+        self.SetInt32(symbols['TAKE'], symbols['TAKE_OPTIONS'] + i)
+        return
+
+    # Previously selected take not found, just switch to first one
+    self.HandleTakeChange()
+
+  def CollectTakes(self):
+    '''Collects all takes in scene
+
+    Returns:
+      ([str], [str], [BaseTake]): list of names, list of labels, list of takes
+
+    Labels are names preceded with indentation creating tree layout.
+    All lists are in the same order.
+    '''
+    takes = []
+    def traverse(take, depth):
+      takes.append((take.GetName(), (depth * '   ') + take.GetName(), take))
+      for child in take.GetChildren():
+        traverse(child, depth+1)
+    traverse(self.document.GetTakeData().GetMainTake(), 0)
+    return zip(*takes)
+
+  def HandleTakeChange(self):
+    self.take = self.ReadComboboxOption(symbols['TAKE'],
+                                        symbols['TAKE_OPTIONS'],
+                                        self.takes)
+    self.render_data = self.take.GetEffectiveRenderData(self.document.GetTakeData())[0]
+    self.renderer = self.take.GetEffectiveRenderData(self.document.GetTakeData())[0][c4d.RDATA_RENDERENGINE]
+    if self.renderer == c4d.RDATA_RENDERENGINE_STANDARD:
+      self.renderer_name = 'Standard'
+    elif self.renderer == c4d.RDATA_RENDERENGINE_PREVIEWSOFTWARE:
+      self.renderer_name = 'Software'
+    else:
+      renderer_plugin = c4d.plugins.FindPlugin(self.renderer)
+      self.renderer_name = renderer_plugin.GetName() if renderer_plugin else str(self.renderer)
+
+    previous_instance_type = None
+    if getattr(self, 'available_instance_types', None):
+      previous_instance_type = self.ReadComboboxOption(
+        symbols['VMS_TYPE'],
+        symbols['VMS_TYPE_OPTIONS'],
+        self.available_instance_types)
+
+    # Renderer
+    if self.renderer in self.supported_renderers:
+      self.SetString(symbols['RENDERER'], self.renderer_name)
+      external_renderer = self.renderer
+      if self.renderer in self.c4d_renderers:
+        external_renderer = None
+      self.available_instance_types = self.zync_cache['instance_types'][external_renderer]
+    else:
+      self.SetString(symbols['RENDERER'], self.renderer_name + ' (unsupported)')
+      self.available_instance_types = []
+
+    # VMs settings
+    if self.available_instance_types:
+      instance_type_labels = [instance_type['label']
+                              for instance_type
+                              in self.available_instance_types]
+    else:
+      instance_type_labels = ['N/A']
+    self.SetComboboxContent(symbols['VMS_TYPE'],
+                            symbols['VMS_TYPE_OPTIONS'],
+                            instance_type_labels)
+
+    # If there was some machine type selected and it's still available, select it again
+    if previous_instance_type:
+      for i, instance_type in enumerate(self.available_instance_types):
+        if instance_type['name'] == previous_instance_type['name']:
+          self.SetInt32(symbols['VMS_TYPE'], symbols['VMS_TYPE_OPTIONS']+i)
+
+    self.UpdatePrice()
+
+    # Resolution
+    self.SetInt32(symbols['RES_X'], self.render_data[c4d.RDATA_XRES], min=1)
+    self.SetInt32(symbols['RES_Y'], self.render_data[c4d.RDATA_YRES], min=1)
+
+    # Renderer settings
+    fps = self.document.GetFps()
+    start_frame = self.render_data[c4d.RDATA_FRAMEFROM].GetFrame(fps)
+    end_frame = self.render_data[c4d.RDATA_FRAMETO].GetFrame(fps)
+    self.SetInt32(symbols['FRAMES_FROM'], start_frame, max=end_frame)
+    self.SetInt32(symbols['FRAMES_TO'], end_frame, min=start_frame)
+    self.SetInt32(symbols['STEP'], self.render_data[c4d.RDATA_FRAMESTEP], min=1)
+
+    # Output path
+    if (self.render_data[c4d.RDATA_GLOBALSAVE] and
+        self.render_data[c4d.RDATA_SAVEIMAGE] and
+        self.render_data[c4d.RDATA_PATH]):
+      self.SetString(symbols['OUTPUT_PATH'], os.path.join(
+        self.document.GetDocumentPath(),
+        self.render_data[c4d.RDATA_PATH]))
+
+  # list of widgets that should be disabled for upload only jobs
   render_only_settings = ['JOB_SETTINGS_G', 'VMS_SETTINGS_G', 'FRAMES_G',
-                          'RENDER_G', 'NO_UPLOAD', 'IGN_MISSING_PLUGINS']
+                          'RENDER_G', 'NO_UPLOAD', 'TAKE']
 
   @show_exceptions
   def Command(self, id, msg):
@@ -321,25 +458,24 @@ class ZyncDialog(gui.GeDialog):
       self.SetInt32(symbols['DIALOG_TABS'], symbols['FILES_TAB'])
     elif id == symbols['ADD_FILE']:
       self.AddFile()
+    elif id == symbols['ADD_DIR']:
+      self.AddFile(directory=True)
     elif id == symbols['OK_FILES']:
       self.ReadFileCheckboxes()
       self.SetInt32(symbols['DIALOG_TABS'], symbols['SETTINGS_TAB'])
-    elif id == symbols['OUTPUT_DIR_BTN']:
-      old_output = self.GetString(symbols['OUTPUT_DIR'])
-      new_output = c4d.storage.LoadDialog(title='Select output directory...',
-                                          flags=c4d.FILESELECT_DIRECTORY,
+    elif id == symbols['OUTPUT_PATH_BTN']:
+      old_output = self.GetString(symbols['OUTPUT_PATH'])
+      new_output = c4d.storage.SaveDialog(title='Set output path...',
                                           def_path=old_output)
       if new_output:
-        self.SetString(symbols['OUTPUT_DIR'], new_output)
+        self.SetString(symbols['OUTPUT_PATH'], new_output)
     elif id == symbols['FRAMES_FROM']:
       self.SetInt32(symbols['FRAMES_TO'],
                     value=self.GetInt32(symbols['FRAMES_TO']),
-                    min=self.GetInt32(symbols['FRAMES_FROM']),
-                    max=self.last_frame)
+                    min=self.GetInt32(symbols['FRAMES_FROM']))
     elif id == symbols['FRAMES_TO']:
       self.SetInt32(symbols['FRAMES_FROM'],
                     value=self.GetInt32(symbols['FRAMES_FROM']),
-                    min=self.first_frame,
                     max=self.GetInt32(symbols['FRAMES_TO']))
     elif id == symbols['EXISTING_PROJ_NAME']:
       self.SetBool(symbols['NEW_PROJ'], False)
@@ -347,34 +483,72 @@ class ZyncDialog(gui.GeDialog):
     elif id == symbols['NEW_PROJ_NAME']:
       self.SetBool(symbols['EXISTING_PROJ'], False)
       self.SetBool(symbols['NEW_PROJ'], True)
-    elif id == symbols['JOB_KIND']:
-      render_job = self.GetBool(symbols['RENDER_JOB'])
+    elif id == symbols['UPLOAD_ONLY']:
+      render_job = not self.GetBool(symbols['UPLOAD_ONLY'])
       for item_name in self.render_only_settings:
         self.Enable(symbols[item_name], render_job)
       if not render_job:
         self.SetBool(symbols['NO_UPLOAD'], False)
     elif id == symbols['LAUNCH']:
       self.LaunchJob()
+    elif id == symbols['TAKE']:
+      self.HandleTakeChange()
+    elif id >= symbols['FILES_LIST_UNFOLD_BTNS'] and id < symbols['FILES_LIST_UNFOLD_BTNS'] + 10000:
+      self.UnfoldDir(id - symbols['FILES_LIST_UNFOLD_BTNS'])
     return True
+
+  def UnfoldDir(self, dir_index):
+    '''Unfolds directory entry in aux files list'''
+    self.ReadFileCheckboxes()
+
+    def generate_new_fboxes():
+      for i in xrange(dir_index):
+        yield self.file_boxes[i]
+
+      dirpath, checked, _ = self.file_boxes[dir_index]
+      for fname in os.listdir(dirpath):
+        fpath = os.path.join(dirpath, fname)
+        if os.path.isfile(fpath):
+          yield (fpath, True, False)
+        elif os.path.isdir(fpath):
+          yield (fpath, True, True)
+
+      for i in xrange(dir_index+1, len(self.file_boxes)):
+        yield self.file_boxes[i]
+
+    new_file_boxes = list(generate_new_fboxes())
+    self.file_boxes = new_file_boxes
+    self.UpdateFileCheckboxes()
 
   def UpdateFileCheckboxes(self):
     self.LayoutFlushGroup(symbols['FILES_LIST_GROUP'])
-    for i, (path, checked) in enumerate(self.file_boxes):
+    for i, (path, checked, is_dir) in enumerate(self.file_boxes):
       checkbox = self.AddCheckbox(symbols['FILES_LIST_OPTIONS'] + i, c4d.BFH_LEFT, 0, 0, name=path)
       self.SetBool(checkbox, checked)
+      if is_dir:
+        self.AddButton(symbols['FILES_LIST_UNFOLD_BTNS'] + i, 0, name='Unfold')
+      else:
+        # Layout filler
+        self.AddStaticText(0, 0)
     self.LayoutChanged(symbols['FILES_LIST_GROUP'])
+    dirs_count = sum(int(is_dir) for (_, _, is_dir) in self.file_boxes)
+    files_count = len(self.file_boxes) - dirs_count
+    self.SetString(symbols['AUX_FILES_SUMMARY'], '{} files, {} folders'.format(files_count, dirs_count))
 
   def ReadFileCheckboxes(self):
     self.file_boxes = [
-      (path, self.GetBool(symbols['FILES_LIST_OPTIONS']+i))
-      for i, (path, _) in enumerate(self.file_boxes)
+      (path, self.GetBool(symbols['FILES_LIST_OPTIONS']+i), is_dir)
+      for i, (path, _, is_dir) in enumerate(self.file_boxes)
     ]
 
-  def AddFile(self):
+  def AddFile(self, directory=False):
     self.ReadFileCheckboxes()
-    fname = c4d.storage.LoadDialog()
+    flags = c4d.FILESELECT_LOAD
+    if directory:
+      flags = c4d.FILESELECT_DIRECTORY
+    fname = c4d.storage.LoadDialog(flags=flags)
     if fname is not None:
-      self.file_boxes.append((fname, True))
+      self.file_boxes.append((fname, True, directory))
       self.UpdateFileCheckboxes()
 
   def Login(self):
@@ -394,16 +568,16 @@ class ZyncDialog(gui.GeDialog):
       zync_conn.logout()
 
   def UpdatePrice(self):
-    if self.instance_type_names:
+    if self.available_instance_types:
       instances_count = self.GetLong(symbols['VMS_NUM'])
-      instance_type_name = self.ReadComboboxOption(symbols['VMS_TYPE'],
-                                                   symbols['VMS_TYPE_OPTIONS'],
-                                                   self.instance_type_names)
-      instance_cost = self.instance_types[instance_type_name]['cost']
+      instance_type = self.ReadComboboxOption(symbols['VMS_TYPE'],
+                                              symbols['VMS_TYPE_OPTIONS'],
+                                              self.available_instance_types)
+      instance_cost = instance_type['cost']
       est_price = instances_count * instance_cost
+      self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: ${:.2f}'.format(est_price))
     else:
-      est_price = 0
-    self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: ${:.2f}'.format(est_price))
+      self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: N/A')
 
   def LaunchJob(self):
     if not self.EnsureSceneSaved():
@@ -427,10 +601,9 @@ class ZyncDialog(gui.GeDialog):
 
       try:
         self.zync_conn.submit_job('c4d', doc_path, params)
-      except zync.ZyncPreflightError, e:
-        gui.MessageDialog('Preflight Check failed:\n{}'.format(e))
-      except zync.ZyncError, e:
-        gui.MessageDialog('Zync Error:\n{}'.format(e))
+      except (zync.ZyncPreflightError, zync.ZyncError):
+        gui.MessageDialog('{}:\n\n{}'.format(e.__class__.__name__, unicode(e)))
+        traceback.print_exc()
       except:
         gui.MessageDialog('Unexpected error during job submission')
         raise
@@ -443,49 +616,107 @@ class ZyncDialog(gui.GeDialog):
       gui.MessageDialog(
           'The scene file must be saved in order to be uploaded to Zync.')
       return False
+    elif self.document.GetDocumentPath().startswith('preset:'):
+      gui.MessageDialog('Rendering scenes directly from preset files is not supported. Please save the scene in a separate file.')
+      return False
     return True
 
   def CollectParams(self):
       params = {}
+
+      if self.renderer not in self.supported_renderers:
+        raise self.ValidationError('Renderer \'{}\' is not currently supported by Zync'.format(self.renderer_name))
+      params['renderer'] = self.renderer
+
+      take = self.ReadComboboxOption(symbols['TAKE'],
+                                     symbols['TAKE_OPTIONS'],
+                                     self.take_names)
+      params['take'] = take
+
       params['num_instances'] = self.GetLong(symbols['VMS_NUM'])
-      instance_type_name = self.ReadComboboxOption(symbols['VMS_TYPE'],
-                                                   symbols['VMS_TYPE_OPTIONS'],
-                                                   self.instance_type_names)
-      params['instance_type'] = instance_type_name
+      if self.available_instance_types:
+        params['instance_type'] = self.ReadComboboxOption(
+          symbols['VMS_TYPE'],
+          symbols['VMS_TYPE_OPTIONS'],
+          self.available_instance_types)['name']
+      else:
+        raise self.ValidationError('No machine type available for this type of job')
 
       params['proj_name'] = self.ReadProjectName()
 
       params['job_subtype'] = 'render'  # ???
       params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
-      params['start_new_slots'] = 1  # value copied from Maya plugin  ####  TODO: what is that? do we need that?
-      params['notify_complete'] = 0  # value copied from Maya plugin  ####  TODO: what is that? do we need that?
-      params['upload_only'] = int(self.GetBool(symbols['UPLOAD_JOB']))
+      params['notify_complete'] = 0  # email notifications off; copied from Maya plugin
+      params['upload_only'] = int(self.GetBool(symbols['UPLOAD_ONLY']))
       params['skip_check'] = int(self.GetBool(symbols['NO_UPLOAD']))
-      params['ignore_plugin_errors'] = int(self.GetBool(symbols['IGN_MISSING_PLUGINS']))
 
-      params['project'] = self.document.GetDocumentPath()
-      params['output_dir'] = self.GetString(symbols['OUTPUT_DIR'])
+      out_path = self.GetString(symbols['OUTPUT_PATH'])
+      out_dir, out_name = os.path.split(out_path)
+      while '$' in out_dir:
+        out_dir, dir1 = os.path.split(out_dir)
+        out_name = os.path.join(dir1, out_name)
+      params['output_dir'] = out_dir
+      params['output_name'] = out_name
+
+      oformat = self.render_data[c4d.RDATA_FORMAT]
+      try:
+        params['format'] = self.supported_oformats[oformat]
+      except KeyError:
+        raise self.ValidationError('Output format not supported. Supported formats: ' +
+                                  ', '.join(self.supported_oformats.values()))
       if not os.path.isabs(params['output_dir']):
-          params['output_dir'] = os.path.abspath(os.path.join(params['project'],
+          params['output_dir'] = os.path.abspath(os.path.join(self.document.GetDocumentPath(),
                                                               params['output_dir']))
 
-      params['renderer'] = self.ReadComboboxOption(symbols['RENDERER'],
-                                                   symbols['RENDERER_OPTIONS'],
-                                                   self.renderers_list)
+      out_fps = self.render_data[c4d.RDATA_FRAMERATE]
+      proj_fps = self.document.GetFps()
+      if out_fps != proj_fps:
+        raise self.ValidationError('Output framerate ({:.0f}) doesn\'t match project framerate ({:.0f}). '
+                                   'Using output framerates different from project fps is currently '
+                                   'not supported by Zync.\n\n'
+                                   'Please adjust the values to be equal.'.format(out_fps, proj_fps))
+
       params['frame_begin'] = self.GetInt32(symbols['FRAMES_FROM'])
       params['frame_end'] = self.GetInt32(symbols['FRAMES_TO'])
       params['step'] = str(self.GetInt32(symbols['STEP']))
       params['chunk_size'] = str(self.GetInt32(symbols['CHUNK']))
       params['xres'] = str(self.GetInt32(symbols['RES_X']))
       params['yres'] = str(self.GetInt32(symbols['RES_Y']))
-      camera = self.ReadComboboxOption(symbols['CAMERA'],
-                                       symbols['CAMERA_OPTIONS'],
-                                       self.cameras)
-      params['camera'] = camera['name']  # TODO: convert camera object to anything sensible
-      user_files = [path for (path, checked) in self.file_boxes if checked]
+      user_files = [path for (path, checked, is_dir) in self.file_boxes if checked]
+      assets = c4d.documents.GetAllAssets(self.document, False, '')
+      if assets is None:
+        # c4d.documents.GetAllAssets returned None. That means that some assets are missing
+        # and C4D wasn't able to locate them. This also means that we are not going to get
+        # any information using GetAllAssets until the dependencies are fixed.
+        raise self.ValidationError('Error:\n\nUnable to locate some assets. '
+                                   'Please fix scene dependencies before submitting the job.\n\n'
+                                   'Try going to Textures tab in Project Info and using '
+                                   'Mark Missing Textures button to find possible problems.')
+      asset_files = set()
+      preset_files = set()
+      preset_re = re.compile(r'preset://([^/]+)/')
+      for asset in assets:
+          m = preset_re.match(asset['filename'])
+          if m:
+              preset_pack = m.group(1)
+              # preset path candidates:
+              userpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER), 'browser', preset_pack)
+              globpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY), 'browser', preset_pack)
+              if os.path.exists(userpath):
+                  preset_files.add(userpath)
+              elif os.path.exists(globpath):
+                  preset_files.add(globpath)
+              else:
+                  raise self.ValidationError('Unable to locate asset \'{}\''.format(asset.filename))
+          else:
+              asset_files.add(asset['filename'])
       params['scene_info'] = {
-          'dependencies': self.LocateTextures(self.GetDocumentTextures()) + user_files,
-          'c4d_version': 'Maya2015'  # TODO: actual c4d version, but now let's find some actual package
+          'dependencies': list(asset_files) + list(preset_files) + user_files,
+          'preset_files': list(preset_files),
+          'glob_tex_paths': [c4d.GetGlobalTexturePath(i) for i in range(10)],
+          'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
+          'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
+          'c4d_version': 'r18',  # TODO: send actual version
       }
       # TODO:renderer specific params??
       return params
@@ -494,10 +725,14 @@ class ZyncDialog(gui.GeDialog):
     if self.GetBool(symbols['NEW_PROJ']):
       proj_name = self.GetString(symbols['NEW_PROJ_NAME'])
       proj_name = proj_name.strip()
+      try:
+        proj_name = str(proj_name)
+      except ValueError:
+        raise self.ValidationError('Project name \'{}\' contains illegal characters.'.format(proj_name))
+      if re.search(r'[/\\]', proj_name):
+        raise self.ValidationError('Project name \'{}\' contains illegal characters.'.format(proj_name))
       if proj_name == '':
         raise self.ValidationError('You must choose existing project or give valid name for a new one.')
-      if not re.match(r'^[-\w]*$', proj_name):  # TODO: check the regex vs actual rules
-        raise self.ValidationError('Project name \'{}\' contains illegal characters.'.format(proj_name))
       if proj_name in self.project_names:
         raise self.ValidationError('Project named \'{}\' already exists.'.format(proj_name))
       return proj_name
@@ -512,30 +747,6 @@ class ZyncDialog(gui.GeDialog):
   def ReadComboboxIndex(self, widget_id, child_id_base):
     return self.GetLong(widget_id) - child_id_base
 
-  def GetDocumentTextures(self):
-    return [path for id, path in self.document.GetAllTextures()
-      if not path.startswith('preset:')]
-
-  def LocateTextures(self, textures):
-      '''Converts relative texture paths to absolute ones'''
-      doc_path = self.document.GetDocumentPath()
-      doc_tex_path = os.path.join(doc_path, 'tex')
-      tex_paths = [doc_tex_path]
-      for i in range(10):
-          glob_path = c4d.GetGlobalTexturePath(i)
-          if glob_path != '':
-              tex_paths.append(glob_path)
-      return [self.LocateTexture(tex, tex_paths) for tex in textures]
-
-  def LocateTexture(self, texture, tex_paths):
-      if os.path.isabs(texture):
-          return texture
-      for tex_path in tex_paths:
-          abs_path = os.path.join(tex_path, texture)
-          if os.path.exists(abs_path):
-              return abs_path
-      raise self.ValidationError('Unable to locate the texture \'{}\''.format(texture))
-
 
 class ZyncPlugin(c4d.plugins.CommandData):
 
@@ -547,9 +758,9 @@ class ZyncPlugin(c4d.plugins.CommandData):
     import_zync_python()
     if not self.dialog.Open(dlgtype=c4d.DLG_TYPE_ASYNC, pluginid=PLUGIN_ID):
       raise Exception('Failed to open dialog window')
-    self.dialog.HandleDocumentChange()
     return True
 
+  @show_exceptions
   def RestoreLayout(self, sec_ref):
     '''Makes some c4d magic to keep dialogs working'''
     return self.dialog.Restore(pluginid=PLUGIN_ID, secret=sec_ref)
@@ -557,7 +768,7 @@ class ZyncPlugin(c4d.plugins.CommandData):
 
 if __name__ == '__main__':
     bmp = c4d.bitmaps.BaseBitmap()
-    bmp.InitWith(os.path.join(dir, 'res', 'zync.png'))
+    bmp.InitWith(os.path.join(plugin_dir, 'res', 'zync.png'))
     plugins.RegisterCommandPlugin(
         id=PLUGIN_ID,
         str='Render with Zync...',

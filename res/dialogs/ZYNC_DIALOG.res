@@ -18,7 +18,6 @@ DIALOG ZYNC_DIALOG {
       SCALE_H;
       FIT_V;
       COLUMNS 1;
-      NAME RENDER_JOB_NAME;
 
       GROUP {  // what to do row
           SCALE_H;
@@ -26,21 +25,9 @@ DIALOG ZYNC_DIALOG {
           SPACE 2,2;
           BORDERSIZE 4,4,4,4;
           BORDERSTYLE BORDER_GROUP_IN;
-          COLUMNS 1;
-          NAME WHAT_TO_DO_TITLE;
 
-          RADIOGROUP JOB_KIND {
-              GROUP {
-                  COLUMNS 2;
-
-                  RADIOGADGET RENDER_JOB {
-                    NAME RENDER_JOB_NAME;
-                  }
-                  RADIOGADGET UPLOAD_JOB {
-                    NAME UPLOAD_JOB_NAME;
-                  }
-              }
-          }
+          STATICTEXT { NAME TAKE_CAPTION; }
+          COMBOBOX TAKE { SCALE_H; }
       }  // what to do row end
 
       GROUP {  // settings row
@@ -69,8 +56,8 @@ DIALOG ZYNC_DIALOG {
             COLUMNS 3;
 
             STATICTEXT { NAME OUTPUT_CAPTION; }
-            EDITTEXT OUTPUT_DIR { SCALE_H; }
-            BUTTON OUTPUT_DIR_BTN { NAME DOTS; }
+            EDITTEXT OUTPUT_PATH { SCALE_H; }
+            BUTTON OUTPUT_PATH_BTN { NAME DOTS; }
           }
         }  // job settings section end
 
@@ -113,12 +100,17 @@ DIALOG ZYNC_DIALOG {
           NAME FILES_TITLE;
 
           GROUP {
-              COLUMNS 1;
-              CHECKBOX NO_UPLOAD { NAME NO_UPLOAD_CAPTION; }
-              CHECKBOX IGN_MISSING_PLUGINS { NAME IGN_MISSING_PLUGINS_CAPTION; }
+            COLUMNS 1;
+            CHECKBOX UPLOAD_ONLY { NAME UPLOAD_ONLY_CAPTION; }
+            CHECKBOX NO_UPLOAD { NAME NO_UPLOAD_CAPTION; }
           }
 
-          BUTTON FILES_LIST { ALIGN_RIGHT; SIZE 0,-20; NAME FILES_LIST_CAPTION; }
+          GROUP {
+            COLUMNS 1;
+            FIT_H;
+            BUTTON FILES_LIST { NAME FILES_LIST_CAPTION; }
+            STATICTEXT AUX_FILES_SUMMARY { CENTER_H; NAME AUX_FILES_SUMMARY; }
+          }
         }  // job files section end
 
         GROUP GCS_G {  // cloud storage section
@@ -165,9 +157,8 @@ DIALOG ZYNC_DIALOG {
           SPACE 2,2;
           BORDERSIZE 4,4,4,4;
           BORDERSTYLE BORDER_GROUP_IN;
-          COLUMNS 1;
-          NAME FRAMES_TITLE;
           COLUMNS 4;
+          NAME FRAMES_TITLE;
 
           STATICTEXT { NAME FRAMES_CAPTION; }
           EDITNUMBERARROWS FRAMES_FROM { SIZE 100,0; }
@@ -195,15 +186,9 @@ DIALOG ZYNC_DIALOG {
           NAME RENDER_TITLE;
 
           STATICTEXT { NAME RENDERER_CAPTION; }
-          COMBOBOX RENDERER {
+          STATICTEXT RENDERER {
             SCALE_H;
-            CHILDS {
-              REND_C4D, REND_C4D_NAME;
-            }
           }
-
-          STATICTEXT { NAME CAMERA_CAPTION; }
-          COMBOBOX CAMERA { SCALE_H; }
 
           STATICTEXT { NAME RESOLUTION_CAPTION; }
           GROUP {
@@ -226,7 +211,6 @@ DIALOG ZYNC_DIALOG {
       }  // nav row end
     }
     GROUP FILES_TAB {
-      NAME RENDER_JOB_NAME;
       FIT_H;
       FIT_V;
       COLUMNS 1;
@@ -243,14 +227,22 @@ DIALOG ZYNC_DIALOG {
           SCALE_H;
           FIT_H;
           ALIGN_TOP;
-          COLUMNS 1;
+          COLUMNS 2;
         }
       }
 
-      BUTTON ADD_FILE {
-        CENTER_H;
-        SIZE 0, 16;
-        NAME ADD_FILE;
+      GROUP {
+          CENTER_H;
+
+        BUTTON ADD_FILE {
+          SIZE 0, 16;
+          NAME ADD_FILE;
+        }
+
+        BUTTON ADD_DIR {
+          SIZE 0, 16;
+          NAME ADD_DIR;
+        }
       }
 
       GROUP {
