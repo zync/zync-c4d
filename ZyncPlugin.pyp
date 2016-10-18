@@ -601,7 +601,7 @@ class ZyncDialog(gui.GeDialog):
 
       try:
         self.zync_conn.submit_job('c4d', doc_path, params)
-      except (zync.ZyncPreflightError, zync.ZyncError):
+      except (zync.ZyncPreflightError, zync.ZyncError) as e:
         gui.MessageDialog('{}:\n\n{}'.format(e.__class__.__name__, unicode(e)))
         traceback.print_exc()
       except:
