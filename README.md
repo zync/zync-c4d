@@ -8,6 +8,10 @@ This plugin depends on zync-python, the Zync Python API.
 
 Before trying to install zync-c4d, make sure to [download zync-python](https://github.com/zync/zync-python) and follow the setup instructions there.
 
+# Warning
+
+Note that the simplest and recommended way to install Zync plugins is through the Zync Plugin Installer (see [instructions](https://sites.google.com/site/zyncpublic/doc/install#plugins)). The steps described below are for advanced users and we recommend to proceed with them only if you need to modify the plugin code for your custom needs.
+
 ## Clone the Repository
 
 Clone this repository to the plugin directory of your Cinema 4D installation. For Mac OS it is `~/Library/Preferences/MAXON/CINEMA 4D R17_<some number>/plugins`, for Windows it is yet to be discovered.
