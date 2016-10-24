@@ -7,6 +7,10 @@ import multiprocessing
 from multiprocessing.dummy import Pool as ThreadPool
 import json
 
+
+__version__ = '0.0.1'
+
+
 zync = None
 
 PLUGIN_ID = 1037862
