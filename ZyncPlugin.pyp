@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.0.1'
+__version__ = '0.5.0'
 
 
 zync = None
@@ -30,7 +30,7 @@ def show_exceptions(func):
       return func(*args, **kwargs)
     except Exception as e:
       if not getattr(e, 'exception_already_shown', False):
-        gui.MessageDialog('{}:\n\n{}'.format(e.__class__.__name__, unicode(e)))
+        gui.MessageDialog('%s:\n\n%s' % (e.__class__.__name__, unicode(e)))
         e.exception_already_shown = True
       raise
   return wrapped
@@ -231,7 +231,7 @@ class ZyncDialog(gui.GeDialog):
         'order': properties['order'],
         'name': name,
         'cost': properties['cost'],
-        'label': '{} (${})'.format(name, properties['cost']),
+        'label': '%s ($%s)' % (name, properties['cost']),
       }
       for name, properties in instance_types_dict.iteritems()
     ]
@@ -250,7 +250,7 @@ class ZyncDialog(gui.GeDialog):
     document = self.document
 
     self.MenuFlushAll()
-    self.MenuSubBegin('Logged in as {}'.format(self.zync_cache['email']))
+    self.MenuSubBegin('Logged in as %s' % self.zync_cache['email'])
     self.MenuSubEnd()
     self.MenuSubBegin('Log out')
     self.MenuAddString(symbols['LOGOUT'], 'Log out from Zync')
@@ -281,7 +281,8 @@ class ZyncDialog(gui.GeDialog):
 
     # General job settings
     self.SetInt32(symbols['JOB_PRIORITY'], 50, min=0)
-    self.SetString(symbols['OUTPUT_PATH'], self.DefaultOutputPath(document))
+    self.SetString(symbols['OUTPUT_PATH'], self.DefaultOutputPath())
+    self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], self.DefaultMultipassOutputPath())
 
     # Renderer settings
     self.SetInt32(symbols['CHUNK'], 10, min=1)
@@ -303,9 +304,13 @@ class ZyncDialog(gui.GeDialog):
     # select the first option or make blank if no options
     self.SetInt32(widget_id, child_id_base if options else 0)
 
-  def DefaultOutputPath(self, document):
-    return os.path.join(document.GetDocumentPath(), 'renders', '$take',
-                        re.sub(r'\.c4d$', '', document.GetDocumentName()))
+  def DefaultOutputPath(self):
+    return os.path.join(self.document.GetDocumentPath(), 'renders', '$take',
+                        re.sub(r'\.c4d$', '', self.document.GetDocumentName()))
+
+  def DefaultMultipassOutputPath(self):
+    return os.path.join(self.document.GetDocumentPath(), 'renders', '$take',
+                        re.sub(r'\.c4d$', '', self.document.GetDocumentName()) + '_multi')
 
   @show_exceptions
   def CoreMessage(self, id, msg):
@@ -432,13 +437,36 @@ class ZyncDialog(gui.GeDialog):
     self.SetInt32(symbols['FRAMES_TO'], end_frame, min=start_frame)
     self.SetInt32(symbols['STEP'], self.render_data[c4d.RDATA_FRAMESTEP], min=1)
 
-    # Output path
-    if (self.render_data[c4d.RDATA_GLOBALSAVE] and
-        self.render_data[c4d.RDATA_SAVEIMAGE] and
-        self.render_data[c4d.RDATA_PATH]):
-      self.SetString(symbols['OUTPUT_PATH'], os.path.join(
-        self.document.GetDocumentPath(),
-        self.render_data[c4d.RDATA_PATH]))
+    # Regular image output path
+    self.regular_image_save_enabled = bool(self.render_data[c4d.RDATA_GLOBALSAVE] and
+        self.render_data[c4d.RDATA_SAVEIMAGE])
+    self.Enable(symbols['OUTPUT_PATH'], int(self.regular_image_save_enabled))
+    self.Enable(symbols['OUTPUT_PATH_BTN'], int(self.regular_image_save_enabled))
+    if self.regular_image_save_enabled:
+      if self.render_data[c4d.RDATA_PATH]:
+        self.SetString(symbols['OUTPUT_PATH'], os.path.join(
+            self.document.GetDocumentPath(),
+            self.render_data[c4d.RDATA_PATH]))
+      else:
+        self.SetString(symbols['OUTPUT_PATH'], self.DefaultOutputPath())
+    else:
+      self.SetString(symbols['OUTPUT_PATH'], 'Not enabled')
+
+    # Multi-pass image output path
+    self.multipass_image_save_enabled = bool(self.render_data[c4d.RDATA_GLOBALSAVE] and
+        self.render_data[c4d.RDATA_MULTIPASS_SAVEIMAGE] and
+        self.render_data[c4d.RDATA_MULTIPASS_ENABLE])
+    self.Enable(symbols['MULTIPASS_OUTPUT_PATH'], int(self.multipass_image_save_enabled))
+    self.Enable(symbols['MULTIPASS_OUTPUT_PATH_BTN'], int(self.multipass_image_save_enabled))
+    if self.multipass_image_save_enabled:
+      if self.render_data[c4d.RDATA_MULTIPASS_FILENAME]:
+        self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], os.path.join(
+            self.document.GetDocumentPath(),
+            self.render_data[c4d.RDATA_MULTIPASS_FILENAME]))
+      else:
+        self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], self.DefaultMultipassOutputPath())
+    else:
+      self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], 'Not enabled')
 
   # list of widgets that should be disabled for upload only jobs
   render_only_settings = ['JOB_SETTINGS_G', 'VMS_SETTINGS_G', 'FRAMES_G',
@@ -469,10 +497,16 @@ class ZyncDialog(gui.GeDialog):
       self.SetInt32(symbols['DIALOG_TABS'], symbols['SETTINGS_TAB'])
     elif id == symbols['OUTPUT_PATH_BTN']:
       old_output = self.GetString(symbols['OUTPUT_PATH'])
-      new_output = c4d.storage.SaveDialog(title='Set output path...',
+      new_output = c4d.storage.SaveDialog(title='Set regular image output path...',
                                           def_path=old_output)
       if new_output:
         self.SetString(symbols['OUTPUT_PATH'], new_output)
+    elif id == symbols['MULTIPASS_OUTPUT_PATH_BTN']:
+      old_output = self.GetString(symbols['MULTIPASS_OUTPUT_PATH'])
+      new_output = c4d.storage.SaveDialog(title='Set multi-pass image output path...',
+                                          def_path=old_output)
+      if new_output:
+        self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], new_output)
     elif id == symbols['FRAMES_FROM']:
       self.SetInt32(symbols['FRAMES_TO'],
                     value=self.GetInt32(symbols['FRAMES_TO']),
@@ -537,7 +571,7 @@ class ZyncDialog(gui.GeDialog):
     self.LayoutChanged(symbols['FILES_LIST_GROUP'])
     dirs_count = sum(int(is_dir) for (_, _, is_dir) in self.file_boxes)
     files_count = len(self.file_boxes) - dirs_count
-    self.SetString(symbols['AUX_FILES_SUMMARY'], '{} files, {} folders'.format(files_count, dirs_count))
+    self.SetString(symbols['AUX_FILES_SUMMARY'], '%d files, %d folders' % (files_count, dirs_count))
 
   def ReadFileCheckboxes(self):
     self.file_boxes = [
@@ -579,7 +613,7 @@ class ZyncDialog(gui.GeDialog):
                                               self.available_instance_types)
       instance_cost = instance_type['cost']
       est_price = instances_count * instance_cost
-      self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: ${:.2f}'.format(est_price))
+      self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: $%.2f' % est_price)
     else:
       self.SetString(symbols['EST_PRICE'], 'Estimated hour cost: N/A')
 
@@ -606,7 +640,7 @@ class ZyncDialog(gui.GeDialog):
       try:
         self.zync_conn.submit_job('c4d', doc_path, params)
       except (zync.ZyncPreflightError, zync.ZyncError) as e:
-        gui.MessageDialog('{}:\n\n{}'.format(e.__class__.__name__, unicode(e)))
+        gui.MessageDialog('%s:\n\n%s' % (e.__class__.__name__, unicode(e)))
         traceback.print_exc()
       except:
         gui.MessageDialog('Unexpected error during job submission')
@@ -625,105 +659,119 @@ class ZyncDialog(gui.GeDialog):
       return False
     return True
 
+  def SplitOutputPath(self, control_with_path):
+    out_path = self.GetString(control_with_path)
+    out_dir, out_name = os.path.split(out_path)
+    while '$' in out_dir:
+      out_dir, dir1 = os.path.split(out_dir)
+      out_name = os.path.join(dir1, out_name)
+    if not os.path.isabs(out_dir):
+      out_dir = os.path.abspath(os.path.join(self.document.GetDocumentPath(), out_dir))
+
+    return out_dir, out_name
+
   def CollectParams(self):
-      params = {}
+    params = {}
 
-      if self.renderer not in self.supported_renderers:
-        raise self.ValidationError('Renderer \'{}\' is not currently supported by Zync'.format(self.renderer_name))
-      params['renderer'] = self.renderer
+    if self.renderer not in self.supported_renderers:
+      raise self.ValidationError('Renderer \'%s\' is not currently supported by Zync' % self.renderer_name)
+    params['renderer'] = self.renderer
 
-      take = self.ReadComboboxOption(symbols['TAKE'],
-                                     symbols['TAKE_OPTIONS'],
-                                     self.take_names)
-      params['take'] = take
+    take = self.ReadComboboxOption(symbols['TAKE'],
+                                   symbols['TAKE_OPTIONS'],
+                                   self.take_names)
+    params['take'] = take
 
-      params['num_instances'] = self.GetLong(symbols['VMS_NUM'])
-      if self.available_instance_types:
-        params['instance_type'] = self.ReadComboboxOption(
-          symbols['VMS_TYPE'],
-          symbols['VMS_TYPE_OPTIONS'],
-          self.available_instance_types)['name']
-      else:
-        raise self.ValidationError('No machine type available for this type of job')
+    params['num_instances'] = self.GetLong(symbols['VMS_NUM'])
+    if self.available_instance_types:
+      params['instance_type'] = self.ReadComboboxOption(
+        symbols['VMS_TYPE'],
+        symbols['VMS_TYPE_OPTIONS'],
+        self.available_instance_types)['name']
+    else:
+      raise self.ValidationError('No machine type available for this type of job')
 
-      params['proj_name'] = self.ReadProjectName()
+    params['proj_name'] = self.ReadProjectName()
 
-      params['job_subtype'] = 'render'  # ???
-      params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
-      params['notify_complete'] = 0  # email notifications off; copied from Maya plugin
-      params['upload_only'] = int(self.GetBool(symbols['UPLOAD_ONLY']))
-      params['skip_check'] = int(self.GetBool(symbols['NO_UPLOAD']))
+    params['job_subtype'] = 'render'
+    params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
+    params['notify_complete'] = 0  # email notifications off; copied from Maya plugin
+    params['upload_only'] = int(self.GetBool(symbols['UPLOAD_ONLY']))
+    params['skip_check'] = int(self.GetBool(symbols['NO_UPLOAD']))
 
-      out_path = self.GetString(symbols['OUTPUT_PATH'])
-      out_dir, out_name = os.path.split(out_path)
-      while '$' in out_dir:
-        out_dir, dir1 = os.path.split(out_dir)
-        out_name = os.path.join(dir1, out_name)
-      params['output_dir'] = out_dir
-      params['output_name'] = out_name
-
-      oformat = self.render_data[c4d.RDATA_FORMAT]
+    if self.regular_image_save_enabled:
+      prefix, suffix = self.SplitOutputPath(symbols['OUTPUT_PATH'])
+      params['output_dir'], params['output_name'] = prefix, suffix
       try:
-        params['format'] = self.supported_oformats[oformat]
+        params['format'] = self.supported_oformats[self.render_data[c4d.RDATA_FORMAT]]
       except KeyError:
-        raise self.ValidationError('Output format not supported. Supported formats: ' +
-                                  ', '.join(self.supported_oformats.values()))
-      if not os.path.isabs(params['output_dir']):
-          params['output_dir'] = os.path.abspath(os.path.join(self.document.GetDocumentPath(),
-                                                              params['output_dir']))
+        raise self.ValidationError('Regular image output format not supported. Supported formats: ' +
+                                   ', '.join(self.supported_oformats.values()))
+    if self.multipass_image_save_enabled:
+      prefix, suffix = self.SplitOutputPath(symbols['MULTIPASS_OUTPUT_PATH'])
+      params['multipass_output_dir'], params['multipass_output_name'] = prefix, suffix
+      try:
+        params['format'] = self.supported_oformats[self.render_data[c4d.RDATA_MULTIPASS_SAVEFORMAT]]
+      except KeyError:
+        raise self.ValidationError('Multi-pass image output format not supported. Supported formats: ' +
+                                   ', '.join(self.supported_oformats.values()))
+    if not (self.regular_image_save_enabled or self.multipass_image_save_enabled):
+      raise self.ValidationError('No output is enabled. Please either enable regular image ' +
+                                 'or multi-pass image output from the render settings.')
 
-      out_fps = self.render_data[c4d.RDATA_FRAMERATE]
-      proj_fps = self.document.GetFps()
-      if out_fps != proj_fps:
-        raise self.ValidationError('Output framerate ({:.0f}) doesn\'t match project framerate ({:.0f}). '
-                                   'Using output framerates different from project fps is currently '
-                                   'not supported by Zync.\n\n'
-                                   'Please adjust the values to be equal.'.format(out_fps, proj_fps))
 
-      params['frame_begin'] = self.GetInt32(symbols['FRAMES_FROM'])
-      params['frame_end'] = self.GetInt32(symbols['FRAMES_TO'])
-      params['step'] = str(self.GetInt32(symbols['STEP']))
-      params['chunk_size'] = str(self.GetInt32(symbols['CHUNK']))
-      params['xres'] = str(self.GetInt32(symbols['RES_X']))
-      params['yres'] = str(self.GetInt32(symbols['RES_Y']))
-      user_files = [path for (path, checked, is_dir) in self.file_boxes if checked]
-      assets = c4d.documents.GetAllAssets(self.document, False, '')
-      if assets is None:
-        # c4d.documents.GetAllAssets returned None. That means that some assets are missing
-        # and C4D wasn't able to locate them. This also means that we are not going to get
-        # any information using GetAllAssets until the dependencies are fixed.
-        raise self.ValidationError('Error:\n\nUnable to locate some assets. '
-                                   'Please fix scene dependencies before submitting the job.\n\n'
-                                   'Try going to Textures tab in Project Info and using '
-                                   'Mark Missing Textures button to find possible problems.')
-      asset_files = set()
-      preset_files = set()
-      preset_re = re.compile(r'preset://([^/]+)/')
-      for asset in assets:
-          m = preset_re.match(asset['filename'])
-          if m:
-              preset_pack = m.group(1)
-              # preset path candidates:
-              userpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER), 'browser', preset_pack)
-              globpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY), 'browser', preset_pack)
-              if os.path.exists(userpath):
-                  preset_files.add(userpath)
-              elif os.path.exists(globpath):
-                  preset_files.add(globpath)
-              else:
-                  raise self.ValidationError('Unable to locate asset \'{}\''.format(asset.filename))
-          else:
-              asset_files.add(asset['filename'])
-      params['scene_info'] = {
-          'dependencies': list(asset_files) + list(preset_files) + user_files,
-          'preset_files': list(preset_files),
-          'glob_tex_paths': [c4d.GetGlobalTexturePath(i) for i in range(10)],
-          'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
-          'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
-          'c4d_version': 'r18',  # TODO: send actual version
-      }
-      # TODO:renderer specific params??
-      return params
+    out_fps = self.render_data[c4d.RDATA_FRAMERATE]
+    proj_fps = self.document.GetFps()
+    if out_fps != proj_fps:
+      raise self.ValidationError('Output framerate (%.2f) doesn\'t match project framerate (%.2f). '
+                                 'Using output framerates different from project fps is currently '
+                                 'not supported by Zync.\n\n'
+                                 'Please adjust the values to be equal.' % (out_fps, proj_fps))
+
+    params['frame_begin'] = self.GetInt32(symbols['FRAMES_FROM'])
+    params['frame_end'] = self.GetInt32(symbols['FRAMES_TO'])
+    params['step'] = str(self.GetInt32(symbols['STEP']))
+    params['chunk_size'] = str(self.GetInt32(symbols['CHUNK']))
+    params['xres'] = str(self.GetInt32(symbols['RES_X']))
+    params['yres'] = str(self.GetInt32(symbols['RES_Y']))
+    user_files = [path for (path, checked, is_dir) in self.file_boxes if checked]
+    assets = c4d.documents.GetAllAssets(self.document, False, '')
+    if assets is None:
+      # c4d.documents.GetAllAssets returned None. That means that some assets are missing
+      # and C4D wasn't able to locate them. This also means that we are not going to get
+      # any information using GetAllAssets until the dependencies are fixed.
+      raise self.ValidationError('Error:\n\nUnable to locate some assets. '
+                                 'Please fix scene dependencies before submitting the job.\n\n'
+                                 'Try going to Textures tab in Project Info and using '
+                                 'Mark Missing Textures button to find possible problems.')
+    asset_files = set()
+    preset_files = set()
+    preset_re = re.compile(r'preset://([^/]+)/')
+    for asset in assets:
+        m = preset_re.match(asset['filename'])
+        if m:
+            preset_pack = m.group(1)
+            # preset path candidates:
+            userpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER), 'browser', preset_pack)
+            globpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY), 'browser', preset_pack)
+            if os.path.exists(userpath):
+                preset_files.add(userpath)
+            elif os.path.exists(globpath):
+                preset_files.add(globpath)
+            else:
+                raise self.ValidationError('Unable to locate asset \'%s\'' %asset.filename)
+        else:
+            asset_files.add(asset['filename'])
+    params['scene_info'] = {
+        'dependencies': list(asset_files) + list(preset_files) + user_files,
+        'preset_files': list(preset_files),
+        'glob_tex_paths': [c4d.GetGlobalTexturePath(i) for i in range(10)],
+        'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
+        'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
+        'c4d_version': 'r18',  # TODO: send actual version
+    }
+    # TODO:renderer specific params??
+    return params
 
   def ReadProjectName(self):
     if self.GetBool(symbols['NEW_PROJ']):
@@ -732,13 +780,13 @@ class ZyncDialog(gui.GeDialog):
       try:
         proj_name = str(proj_name)
       except ValueError:
-        raise self.ValidationError('Project name \'{}\' contains illegal characters.'.format(proj_name))
+        raise self.ValidationError('Project name \'%s\' contains illegal characters.' % proj_name)
       if re.search(r'[/\\]', proj_name):
-        raise self.ValidationError('Project name \'{}\' contains illegal characters.'.format(proj_name))
+        raise self.ValidationError('Project name \'%s\' contains illegal characters.' %  proj_name)
       if proj_name == '':
         raise self.ValidationError('You must choose existing project or give valid name for a new one.')
       if proj_name in self.project_names:
-        raise self.ValidationError('Project named \'{}\' already exists.'.format(proj_name))
+        raise self.ValidationError('Project named \'%s\' already exists.' % proj_name)
       return proj_name
     else:
       return self.ReadComboboxOption(symbols['EXISTING_PROJ_NAME'],

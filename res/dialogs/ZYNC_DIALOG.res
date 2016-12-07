@@ -59,6 +59,14 @@ DIALOG ZYNC_DIALOG {
             EDITTEXT OUTPUT_PATH { SCALE_H; }
             BUTTON OUTPUT_PATH_BTN { NAME DOTS; }
           }
+          GROUP {
+            SCALE_H;
+            COLUMNS 3;
+
+            STATICTEXT { NAME MULTIPASS_OUTPUT_CAPTION; }
+            EDITTEXT MULTIPASS_OUTPUT_PATH { SCALE_H; }
+            BUTTON MULTIPASS_OUTPUT_PATH_BTN { NAME DOTS; }
+          }
         }  // job settings section end
 
         GROUP VMS_SETTINGS_G {  // vms section

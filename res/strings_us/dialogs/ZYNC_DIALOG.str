@@ -16,7 +16,8 @@ DIALOGSTRINGS ZYNC_DIALOG
   NEW_PROJ_NAME "Create new Zync project";
 
   JOB_TITLE "General job settings";
-  OUTPUT_CAPTION "Output path";
+  OUTPUT_CAPTION "Image output path";
+  MULTIPASS_OUTPUT_CAPTION "Multi-pass output path";
   JOB_PRIORITY_CAPTION "Job priority";
 
   FILES_TITLE "File management";
