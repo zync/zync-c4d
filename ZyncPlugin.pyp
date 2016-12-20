@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.5.0'
+__version__ = '0.5.1'
 
 
 zync = None
@@ -676,6 +676,7 @@ class ZyncDialog(gui.GeDialog):
     if self.renderer not in self.supported_renderers:
       raise self.ValidationError('Renderer \'%s\' is not currently supported by Zync' % self.renderer_name)
     params['renderer'] = self.renderer
+    params['plugin_version'] = __version__
 
     take = self.ReadComboboxOption(symbols['TAKE'],
                                    symbols['TAKE_OPTIONS'],
