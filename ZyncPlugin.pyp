@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.5.1'
+__version__ = '0.5.3'
 
 
 zync = None
@@ -470,7 +470,7 @@ class ZyncDialog(gui.GeDialog):
 
   # list of widgets that should be disabled for upload only jobs
   render_only_settings = ['JOB_SETTINGS_G', 'VMS_SETTINGS_G', 'FRAMES_G',
-                          'RENDER_G', 'NO_UPLOAD', 'TAKE']
+                          'RENDER_G', 'TAKE']
 
   @show_exceptions
   def Command(self, id, msg):
@@ -525,8 +525,6 @@ class ZyncDialog(gui.GeDialog):
       render_job = not self.GetBool(symbols['UPLOAD_ONLY'])
       for item_name in self.render_only_settings:
         self.Enable(symbols[item_name], render_job)
-      if not render_job:
-        self.SetBool(symbols['NO_UPLOAD'], False)
     elif id == symbols['LAUNCH']:
       self.LaunchJob()
     elif id == symbols['TAKE']:
@@ -696,9 +694,8 @@ class ZyncDialog(gui.GeDialog):
 
     params['job_subtype'] = 'render'
     params['priority'] = self.GetLong(symbols['JOB_PRIORITY'])
-    params['notify_complete'] = 0  # email notifications off; copied from Maya plugin
+    params['notify_complete'] = int(self.GetBool(symbols['NOTIFY_COMPLETE']))
     params['upload_only'] = int(self.GetBool(symbols['UPLOAD_ONLY']))
-    params['skip_check'] = int(self.GetBool(symbols['NO_UPLOAD']))
 
     if self.regular_image_save_enabled:
       prefix, suffix = self.SplitOutputPath(symbols['OUTPUT_PATH'])

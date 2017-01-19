@@ -67,6 +67,10 @@ DIALOG ZYNC_DIALOG {
             EDITTEXT MULTIPASS_OUTPUT_PATH { SCALE_H; }
             BUTTON MULTIPASS_OUTPUT_PATH_BTN { NAME DOTS; }
           }
+          GROUP {
+            COLUMNS 1;
+            CHECKBOX NOTIFY_COMPLETE { NAME NOTIFY_COMPLETE_CAPTION; }
+          }
         }  // job settings section end
 
         GROUP VMS_SETTINGS_G {  // vms section
@@ -110,7 +114,6 @@ DIALOG ZYNC_DIALOG {
           GROUP {
             COLUMNS 1;
             CHECKBOX UPLOAD_ONLY { NAME UPLOAD_ONLY_CAPTION; }
-            CHECKBOX NO_UPLOAD { NAME NO_UPLOAD_CAPTION; }
           }
 
           GROUP {

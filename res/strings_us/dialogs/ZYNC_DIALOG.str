@@ -19,9 +19,9 @@ DIALOGSTRINGS ZYNC_DIALOG
   OUTPUT_CAPTION "Image output path";
   MULTIPASS_OUTPUT_CAPTION "Multi-pass output path";
   JOB_PRIORITY_CAPTION "Job priority";
+  NOTIFY_COMPLETE_CAPTION "Notify on Job Completion";
 
   FILES_TITLE "File management";
-  NO_UPLOAD_CAPTION "Skip files check";
   FILES_LIST_CAPTION "Select auxiliary files...";
   AUX_FILES_SUMMARY "000 files, 000 folders";
 
