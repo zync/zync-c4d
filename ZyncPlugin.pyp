@@ -8,12 +8,12 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.5.3'
+__version__ = '0.5.4'
 
 
 zync = None
 
-PLUGIN_ID = 1037862
+PLUGIN_ID = 1038932
 
 plugin_dir = os.path.dirname(__file__)
 
