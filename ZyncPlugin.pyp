@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.5.4'
+__version__ = '0.5.9'
 
 
 zync = None
@@ -95,7 +95,8 @@ class ZyncDialog(gui.GeDialog):
   # These lists are lists of enums values/PLUGIN_IDs, not names!
   c4d_renderers = [c4d.RDATA_RENDERENGINE_STANDARD,
                    c4d.RDATA_RENDERENGINE_PHYSICAL]
-  supported_renderers = c4d_renderers + []
+  RDATA_RENDERENGINE_ARNOLD = 1029988
+  supported_renderers = c4d_renderers + [RDATA_RENDERENGINE_ARNOLD]
 
   supported_oformats = {
     c4d.FILTER_B3D: 'B3D',
@@ -119,6 +120,7 @@ class ZyncDialog(gui.GeDialog):
     self.logged_out = True
     self.logged_in = False
     self.autologin = True
+    self.document = c4d.documents.GetActiveDocument()
     super(ZyncDialog, self).__init__()
 
   @show_exceptions
@@ -209,7 +211,7 @@ class ZyncDialog(gui.GeDialog):
     return {
       'instance_types': {
         external_renderer: self.GetInstanceTypes(external_renderer)
-        for external_renderer in [None]
+        for external_renderer in [self.RDATA_RENDERENGINE_ARNOLD]
       },
       'project_list': self.zync_conn.get_project_list(),
       'email': self.zync_conn.email,
@@ -224,8 +226,11 @@ class ZyncDialog(gui.GeDialog):
     self.InitializeControls()
 
   def GetInstanceTypes(self, external_renderer):
+    renderer_plugin = c4d.plugins.FindPlugin(external_renderer)
+    renderer_name = renderer_plugin.GetName() if renderer_plugin else str(external_renderer)
+
     instance_types_dict = self.zync_conn.get_instance_types(
-      renderer=external_renderer)
+      renderer=renderer_name)
     instance_types = [
       {
         'order': properties['order'],
@@ -384,6 +389,12 @@ class ZyncDialog(gui.GeDialog):
       self.renderer_name = 'Standard'
     elif self.renderer == c4d.RDATA_RENDERENGINE_PREVIEWSOFTWARE:
       self.renderer_name = 'Software'
+    elif self.renderer == c4d.RDATA_RENDERENGINE_PREVIEWHARDWARE:
+      self.renderer_name = 'Hardware'
+    elif self.renderer == c4d.RDATA_RENDERENGINE_PHYSICAL:
+      self.renderer_name = 'Pysical'
+    elif self.renderer == c4d.RDATA_RENDERENGINE_CINEMAN:
+      self.renderer_name = 'Cineman'
     else:
       renderer_plugin = c4d.plugins.FindPlugin(self.renderer)
       self.renderer_name = renderer_plugin.GetName() if renderer_plugin else str(self.renderer)
@@ -399,7 +410,7 @@ class ZyncDialog(gui.GeDialog):
     if self.renderer in self.supported_renderers:
       self.SetString(symbols['RENDERER'], self.renderer_name)
       external_renderer = self.renderer
-      if self.renderer in self.c4d_renderers:
+      if self.renderer in self.c4d_renderers or (not self.renderer in self.zync_cache['instance_types']):
         external_renderer = None
       self.available_instance_types = self.zync_cache['instance_types'][external_renderer]
     else:
@@ -673,7 +684,7 @@ class ZyncDialog(gui.GeDialog):
 
     if self.renderer not in self.supported_renderers:
       raise self.ValidationError('Renderer \'%s\' is not currently supported by Zync' % self.renderer_name)
-    params['renderer'] = self.renderer
+    params['renderer'] = self.renderer_name
     params['plugin_version'] = __version__
 
     take = self.ReadComboboxOption(symbols['TAKE'],
@@ -757,7 +768,7 @@ class ZyncDialog(gui.GeDialog):
             elif os.path.exists(globpath):
                 preset_files.add(globpath)
             else:
-                raise self.ValidationError('Unable to locate asset \'%s\'' %asset.filename)
+                raise self.ValidationError('Unable to locate asset \'%s\'' % asset['filename'])
         else:
             asset_files.add(asset['filename'])
     params['scene_info'] = {
