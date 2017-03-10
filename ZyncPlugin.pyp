@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.5.9'
+__version__ = '0.5.14'
 
 
 zync = None
@@ -97,6 +97,15 @@ class ZyncDialog(gui.GeDialog):
                    c4d.RDATA_RENDERENGINE_PHYSICAL]
   RDATA_RENDERENGINE_ARNOLD = 1029988
   supported_renderers = c4d_renderers + [RDATA_RENDERENGINE_ARNOLD]
+
+  RENDERER_NAME_MAP = {
+    c4d.RDATA_RENDERENGINE_STANDARD: 'Standard',
+    c4d.RDATA_RENDERENGINE_PREVIEWSOFTWARE: 'Software',
+    c4d.RDATA_RENDERENGINE_PREVIEWHARDWARE: 'Hardware',
+    c4d.RDATA_RENDERENGINE_PHYSICAL: 'Physical',
+    c4d.RDATA_RENDERENGINE_CINEMAN: 'Cineman',
+    RDATA_RENDERENGINE_ARNOLD: 'Arnold',
+  }
 
   supported_oformats = {
     c4d.FILTER_B3D: 'B3D',
@@ -208,16 +217,21 @@ class ZyncDialog(gui.GeDialog):
     self.Logout()
 
   def FetchAvailableSettings(self):
-    return {
-      'instance_types': {
-        external_renderer: self.GetInstanceTypes(external_renderer)
-        for external_renderer in [self.RDATA_RENDERENGINE_ARNOLD]
-      },
-      'project_list': self.zync_conn.get_project_list(),
-      'email': self.zync_conn.email,
-      'project_name_hint': self.zync_conn.get_project_name(
-        self.document.GetDocumentName()),  # TODO: fix web implementation
-    }
+    try:
+      return dict(
+          instance_types={
+              external_renderer: self.GetInstanceTypes(
+                  self.GetRendererName(external_renderer))
+              for external_renderer in [None, self.RDATA_RENDERENGINE_ARNOLD]
+          },
+          project_list=self.zync_conn.get_project_list(),
+          email=self.zync_conn.email,
+          project_name_hint=self.zync_conn.get_project_name(
+              self.document.GetDocumentName()),  # TODO: fix web implementation
+      )
+    except:
+      traceback.print_exc()
+      raise
 
   def OnFetched(self, zync_cache):
     self.zync_cache = zync_cache
@@ -225,10 +239,7 @@ class ZyncDialog(gui.GeDialog):
     self.logged_in = True
     self.InitializeControls()
 
-  def GetInstanceTypes(self, external_renderer):
-    renderer_plugin = c4d.plugins.FindPlugin(external_renderer)
-    renderer_name = renderer_plugin.GetName() if renderer_plugin else str(external_renderer)
-
+  def GetInstanceTypes(self, renderer_name):
     instance_types_dict = self.zync_conn.get_instance_types(
       renderer=renderer_name)
     instance_types = [
@@ -379,25 +390,23 @@ class ZyncDialog(gui.GeDialog):
     traverse(self.document.GetTakeData().GetMainTake(), 0)
     return zip(*takes)
 
+  def GetRendererName(self, renderer_id):
+    """Returns Zync renderer name given C4D renderer ID"""
+    if renderer_id in self.RENDERER_NAME_MAP:
+      return self.RENDERER_NAME_MAP[renderer_id]
+    elif not renderer_id:
+      return None
+    else:
+      renderer_plugin = c4d.plugins.FindPlugin(renderer_id)
+      return renderer_plugin.GetName() if renderer_plugin else str(renderer_id)
+
   def HandleTakeChange(self):
     self.take = self.ReadComboboxOption(symbols['TAKE'],
                                         symbols['TAKE_OPTIONS'],
                                         self.takes)
     self.render_data = self.take.GetEffectiveRenderData(self.document.GetTakeData())[0]
     self.renderer = self.take.GetEffectiveRenderData(self.document.GetTakeData())[0][c4d.RDATA_RENDERENGINE]
-    if self.renderer == c4d.RDATA_RENDERENGINE_STANDARD:
-      self.renderer_name = 'Standard'
-    elif self.renderer == c4d.RDATA_RENDERENGINE_PREVIEWSOFTWARE:
-      self.renderer_name = 'Software'
-    elif self.renderer == c4d.RDATA_RENDERENGINE_PREVIEWHARDWARE:
-      self.renderer_name = 'Hardware'
-    elif self.renderer == c4d.RDATA_RENDERENGINE_PHYSICAL:
-      self.renderer_name = 'Pysical'
-    elif self.renderer == c4d.RDATA_RENDERENGINE_CINEMAN:
-      self.renderer_name = 'Cineman'
-    else:
-      renderer_plugin = c4d.plugins.FindPlugin(self.renderer)
-      self.renderer_name = renderer_plugin.GetName() if renderer_plugin else str(self.renderer)
+    self.renderer_name = self.GetRendererName(self.renderer)
 
     previous_instance_type = None
     if getattr(self, 'available_instance_types', None):
