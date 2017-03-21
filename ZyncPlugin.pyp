@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.5.14'
+__version__ = '0.5.16'
 
 
 zync = None
@@ -129,7 +129,7 @@ class ZyncDialog(gui.GeDialog):
     self.logged_out = True
     self.logged_in = False
     self.autologin = True
-    self.document = c4d.documents.GetActiveDocument()
+    self.document = None
     super(ZyncDialog, self).__init__()
 
   @show_exceptions
@@ -227,7 +227,7 @@ class ZyncDialog(gui.GeDialog):
           project_list=self.zync_conn.get_project_list(),
           email=self.zync_conn.email,
           project_name_hint=self.zync_conn.get_project_name(
-              self.document.GetDocumentName()),  # TODO: fix web implementation
+              c4d.documents.GetActiveDocument().GetDocumentName()),  # TODO: fix web implementation
       )
     except:
       traceback.print_exc()
@@ -263,7 +263,7 @@ class ZyncDialog(gui.GeDialog):
     self.LayoutChanged(symbols['DIALOG_TOP_GROUP'])
 
   def InitializeControls(self):
-    document = self.document
+    document = c4d.documents.GetActiveDocument()
 
     self.MenuFlushAll()
     self.MenuSubBegin('Logged in as %s' % self.zync_cache['email'])
@@ -321,12 +321,16 @@ class ZyncDialog(gui.GeDialog):
     self.SetInt32(widget_id, child_id_base if options else 0)
 
   def DefaultOutputPath(self):
-    return os.path.join(self.document.GetDocumentPath(), 'renders', '$take',
-                        re.sub(r'\.c4d$', '', self.document.GetDocumentName()))
+    document = c4d.documents.GetActiveDocument()
+    return os.path.join(document.GetDocumentPath(),
+                        'renders', '$take',
+                        re.sub(r'\.c4d$', '', document.GetDocumentName()))
 
   def DefaultMultipassOutputPath(self):
-    return os.path.join(self.document.GetDocumentPath(), 'renders', '$take',
-                        re.sub(r'\.c4d$', '', self.document.GetDocumentName()) + '_multi')
+    document = c4d.documents.GetActiveDocument()
+    return os.path.join(document.GetDocumentPath(),
+                        'renders', '$take',
+                        re.sub(r'\.c4d$', '', document.GetDocumentName()) + '_multi')
 
   @show_exceptions
   def CoreMessage(self, id, msg):
@@ -387,7 +391,7 @@ class ZyncDialog(gui.GeDialog):
       takes.append((take.GetName(), (depth * '   ') + take.GetName(), take))
       for child in take.GetChildren():
         traverse(child, depth+1)
-    traverse(self.document.GetTakeData().GetMainTake(), 0)
+    traverse(c4d.documents.GetActiveDocument().GetTakeData().GetMainTake(), 0)
     return zip(*takes)
 
   def GetRendererName(self, renderer_id):
@@ -401,11 +405,16 @@ class ZyncDialog(gui.GeDialog):
       return renderer_plugin.GetName() if renderer_plugin else str(renderer_id)
 
   def HandleTakeChange(self):
+    document = c4d.documents.GetActiveDocument()
     self.take = self.ReadComboboxOption(symbols['TAKE'],
                                         symbols['TAKE_OPTIONS'],
                                         self.takes)
-    self.render_data = self.take.GetEffectiveRenderData(self.document.GetTakeData())[0]
-    self.renderer = self.take.GetEffectiveRenderData(self.document.GetTakeData())[0][c4d.RDATA_RENDERENGINE]
+    if not self.take.GetEffectiveRenderData(document.GetTakeData()):
+      gui.MessageDialog(
+          'Please load or create a scene with at least one valid take before using Zync plugin.')
+      return
+    self.render_data = self.take.GetEffectiveRenderData(document.GetTakeData())[0]
+    self.renderer = self.take.GetEffectiveRenderData(document.GetTakeData())[0][c4d.RDATA_RENDERENGINE]
     self.renderer_name = self.GetRendererName(self.renderer)
 
     previous_instance_type = None
@@ -450,7 +459,7 @@ class ZyncDialog(gui.GeDialog):
     self.SetInt32(symbols['RES_Y'], self.render_data[c4d.RDATA_YRES], min=1)
 
     # Renderer settings
-    fps = self.document.GetFps()
+    fps = document.GetFps()
     start_frame = self.render_data[c4d.RDATA_FRAMEFROM].GetFrame(fps)
     end_frame = self.render_data[c4d.RDATA_FRAMETO].GetFrame(fps)
     self.SetInt32(symbols['FRAMES_FROM'], start_frame, max=end_frame)
@@ -465,7 +474,7 @@ class ZyncDialog(gui.GeDialog):
     if self.regular_image_save_enabled:
       if self.render_data[c4d.RDATA_PATH]:
         self.SetString(symbols['OUTPUT_PATH'], os.path.join(
-            self.document.GetDocumentPath(),
+            document.GetDocumentPath(),
             self.render_data[c4d.RDATA_PATH]))
       else:
         self.SetString(symbols['OUTPUT_PATH'], self.DefaultOutputPath())
@@ -481,7 +490,7 @@ class ZyncDialog(gui.GeDialog):
     if self.multipass_image_save_enabled:
       if self.render_data[c4d.RDATA_MULTIPASS_FILENAME]:
         self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], os.path.join(
-            self.document.GetDocumentPath(),
+            document.GetDocumentPath(),
             self.render_data[c4d.RDATA_MULTIPASS_FILENAME]))
       else:
         self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], self.DefaultMultipassOutputPath())
@@ -651,8 +660,9 @@ class ZyncDialog(gui.GeDialog):
           'Submit the job anyway?')
         if not alpha_confirmed:
           return
-      doc_dirpath = self.document.GetDocumentPath()
-      doc_name = self.document.GetDocumentName()
+      document = c4d.documents.GetActiveDocument()
+      doc_dirpath = document.GetDocumentPath()
+      doc_name = document.GetDocumentName()
       doc_path = os.path.join(doc_dirpath, doc_name)
 
       try:
@@ -668,11 +678,12 @@ class ZyncDialog(gui.GeDialog):
         # TODO: working link to zync console (or yes/no dialog as easier solution, but it may be annoying)
 
   def EnsureSceneSaved(self):
-    if self.document.GetDocumentPath() == '' or self.document.GetChanged():
+    document = c4d.documents.GetActiveDocument()
+    if document.GetDocumentPath() == '' or document.GetChanged():
       gui.MessageDialog(
           'The scene file must be saved in order to be uploaded to Zync.')
       return False
-    elif self.document.GetDocumentPath().startswith('preset:'):
+    elif document.GetDocumentPath().startswith('preset:'):
       gui.MessageDialog('Rendering scenes directly from preset files is not supported. Please save the scene in a separate file.')
       return False
     return True
@@ -684,7 +695,7 @@ class ZyncDialog(gui.GeDialog):
       out_dir, dir1 = os.path.split(out_dir)
       out_name = os.path.join(dir1, out_name)
     if not os.path.isabs(out_dir):
-      out_dir = os.path.abspath(os.path.join(self.document.GetDocumentPath(), out_dir))
+      out_dir = os.path.abspath(os.path.join(c4d.documents.GetActiveDocument().GetDocumentPath(), out_dir))
 
     return out_dir, out_name
 
@@ -739,7 +750,8 @@ class ZyncDialog(gui.GeDialog):
 
 
     out_fps = self.render_data[c4d.RDATA_FRAMERATE]
-    proj_fps = self.document.GetFps()
+    document = c4d.documents.GetActiveDocument()
+    proj_fps = document.GetFps()
     if out_fps != proj_fps:
       raise self.ValidationError('Output framerate (%.2f) doesn\'t match project framerate (%.2f). '
                                  'Using output framerates different from project fps is currently '
@@ -753,7 +765,7 @@ class ZyncDialog(gui.GeDialog):
     params['xres'] = str(self.GetInt32(symbols['RES_X']))
     params['yres'] = str(self.GetInt32(symbols['RES_Y']))
     user_files = [path for (path, checked, is_dir) in self.file_boxes if checked]
-    assets = c4d.documents.GetAllAssets(self.document, False, '')
+    assets = c4d.documents.GetAllAssets(document, False, '')
     if assets is None:
       # c4d.documents.GetAllAssets returned None. That means that some assets are missing
       # and C4D wasn't able to locate them. This also means that we are not going to get
