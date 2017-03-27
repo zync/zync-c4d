@@ -30,6 +30,33 @@ DIALOG ZYNC_DIALOG {
           COMBOBOX TAKE { SCALE_H; }
       }  // what to do row end
 
+      GROUP {  // Output row
+          SCALE_H;
+          FIT_V;
+          SPACE 2,2;
+          BORDERSIZE 4,4,4,4;
+          BORDERSTYLE BORDER_GROUP_IN;
+          COLUMNS 1;
+          NAME OUTPUT_TITLE;		  
+		  
+          GROUP {
+            SCALE_H;
+            COLUMNS 3;
+
+            STATICTEXT { NAME OUTPUT_CAPTION; }
+            EDITTEXT OUTPUT_PATH { SCALE_H; }
+            BUTTON OUTPUT_PATH_BTN { NAME DOTS; }
+          }
+          GROUP {
+            SCALE_H;
+            COLUMNS 3;
+
+            STATICTEXT { NAME MULTIPASS_OUTPUT_CAPTION; }
+            EDITTEXT MULTIPASS_OUTPUT_PATH { SCALE_H; }
+            BUTTON MULTIPASS_OUTPUT_PATH_BTN { NAME DOTS; }
+          }
+      }  // Output row end
+
       GROUP {  // settings row
         SCALE_H;
         COLUMNS 2;
@@ -51,22 +78,6 @@ DIALOG ZYNC_DIALOG {
             EDITNUMBERARROWS JOB_PRIORITY { SIZE 30,0; }
           }
 
-          GROUP {
-            SCALE_H;
-            COLUMNS 3;
-
-            STATICTEXT { NAME OUTPUT_CAPTION; }
-            EDITTEXT OUTPUT_PATH { SCALE_H; }
-            BUTTON OUTPUT_PATH_BTN { NAME DOTS; }
-          }
-          GROUP {
-            SCALE_H;
-            COLUMNS 3;
-
-            STATICTEXT { NAME MULTIPASS_OUTPUT_CAPTION; }
-            EDITTEXT MULTIPASS_OUTPUT_PATH { SCALE_H; }
-            BUTTON MULTIPASS_OUTPUT_PATH_BTN { NAME DOTS; }
-          }
           GROUP {
             COLUMNS 1;
             CHECKBOX NOTIFY_COMPLETE { NAME NOTIFY_COMPLETE_CAPTION; }

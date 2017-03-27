@@ -4,8 +4,12 @@ DIALOGSTRINGS ZYNC_DIALOG
 
   TAKE_CAPTION "Take to be rendered";
   UPLOAD_ONLY_CAPTION "Upload only";
+  
+  OUTPUT_TITLE "Output settings";
+  OUTPUT_CAPTION "Image output path";
+  MULTIPASS_OUTPUT_CAPTION "Multi-pass output path";
 
-  VMS_TITLE "Machines setup";
+  VMS_TITLE "Machines settings";
   VMS_NUM_CAPTION "Number of machines";
   VMS_TYPE_CAPTION "Machine type";
   EST_COST "Estimated hour cost: $00000.00";
@@ -15,9 +19,7 @@ DIALOGSTRINGS ZYNC_DIALOG
   EXISTING_PROJ_NAME "Use existing Zync project";
   NEW_PROJ_NAME "Create new Zync project";
 
-  JOB_TITLE "General job settings";
-  OUTPUT_CAPTION "Image output path";
-  MULTIPASS_OUTPUT_CAPTION "Multi-pass output path";
+  JOB_TITLE "Job settings";
   JOB_PRIORITY_CAPTION "Job priority";
   NOTIFY_COMPLETE_CAPTION "Notify on Job Completion";
 
