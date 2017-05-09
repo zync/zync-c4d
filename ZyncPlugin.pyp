@@ -8,12 +8,16 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.5.18'
+__version__ = '0.7.0'
 
 
 zync = None
 
 PLUGIN_ID = 1038932
+ZYNC_DOWNLOAD_MENU_ID = 1039086
+ZYNC_SUBMENU_PCMD = "IDS_ZYNC_SUBMENU"
+PIPELINE_MENU_PCMD = "IDS_EDITOR_PIPELINE"
+
 
 plugin_dir = os.path.dirname(__file__)
 
@@ -468,14 +472,14 @@ class ZyncDialog(gui.GeDialog):
 
     # Regular image output path
     self.regular_image_save_enabled = bool(self.render_data[c4d.RDATA_GLOBALSAVE] and
-        self.render_data[c4d.RDATA_SAVEIMAGE])
+                                           self.render_data[c4d.RDATA_SAVEIMAGE])
     self.Enable(symbols['OUTPUT_PATH'], int(self.regular_image_save_enabled))
     self.Enable(symbols['OUTPUT_PATH_BTN'], int(self.regular_image_save_enabled))
     if self.regular_image_save_enabled:
       if self.render_data[c4d.RDATA_PATH]:
         self.SetString(symbols['OUTPUT_PATH'], os.path.join(
-            document.GetDocumentPath(),
-            self.render_data[c4d.RDATA_PATH]))
+          document.GetDocumentPath(),
+          self.render_data[c4d.RDATA_PATH]))
       else:
         self.SetString(symbols['OUTPUT_PATH'], self.DefaultOutputPath())
     else:
@@ -483,8 +487,8 @@ class ZyncDialog(gui.GeDialog):
 
     # Multi-pass image output path
     self.multipass_image_save_enabled = bool(self.render_data[c4d.RDATA_GLOBALSAVE] and
-        self.render_data[c4d.RDATA_MULTIPASS_SAVEIMAGE] and
-        self.render_data[c4d.RDATA_MULTIPASS_ENABLE])
+                                             self.render_data[c4d.RDATA_MULTIPASS_SAVEIMAGE] and
+                                             self.render_data[c4d.RDATA_MULTIPASS_ENABLE])
     self.Enable(symbols['MULTIPASS_OUTPUT_PATH'], int(self.multipass_image_save_enabled))
     self.Enable(symbols['MULTIPASS_OUTPUT_PATH_BTN'], int(self.multipass_image_save_enabled))
     if self.multipass_image_save_enabled:
@@ -619,7 +623,7 @@ class ZyncDialog(gui.GeDialog):
   def Login(self):
     import_zync_python()
     self.StartAsyncCall(lambda: zync.Zync(application='c4d'), self.OnConnected,
-                    self.OnLoginFail)
+                        self.OnLoginFail)
     self.LoadLayout('CONN_DIALOG')
 
   def Logout(self):
@@ -778,20 +782,20 @@ class ZyncDialog(gui.GeDialog):
     preset_files = set()
     preset_re = re.compile(r'preset://([^/]+)/')
     for asset in assets:
-        m = preset_re.match(asset['filename'])
-        if m:
-            preset_pack = m.group(1)
-            # preset path candidates:
-            userpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER), 'browser', preset_pack)
-            globpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY), 'browser', preset_pack)
-            if os.path.exists(userpath):
-                preset_files.add(userpath)
-            elif os.path.exists(globpath):
-                preset_files.add(globpath)
-            else:
-                raise self.ValidationError('Unable to locate asset \'%s\'' % asset['filename'])
+      m = preset_re.match(asset['filename'])
+      if m:
+        preset_pack = m.group(1)
+        # preset path candidates:
+        userpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER), 'browser', preset_pack)
+        globpath = os.path.join(c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY), 'browser', preset_pack)
+        if os.path.exists(userpath):
+          preset_files.add(userpath)
+        elif os.path.exists(globpath):
+          preset_files.add(globpath)
         else:
-            asset_files.add(asset['filename'])
+          raise self.ValidationError('Unable to locate asset \'%s\'' % asset['filename'])
+      else:
+        asset_files.add(asset['filename'])
     params['scene_info'] = {
         'dependencies': list(asset_files) + list(preset_files) + user_files,
         'preset_files': list(preset_files),
@@ -848,13 +852,171 @@ class ZyncPlugin(c4d.plugins.CommandData):
     return self.dialog.Restore(pluginid=PLUGIN_ID, secret=sec_ref)
 
 
+def PCMD(id):
+  return "PLUGIN_CMD_" + str(id)
+
+
+class ResourceWithAncestorPath(object):
+  """Describes C4D menu resource. 
+  
+  It remembers path from root and it's able to update ansestors.
+  History is represented as a list of dicts.
+  Each element has two keys:
+    'item' is the resource.
+    'index' An integer telling the index of the resource in the parent container
+  
+  Most of methods return the resource object, so it's possible to chain
+  operations. Find method returns boolean.
+  e.g.
+  res = ResourceWithHistory(main_menu)
+  if res.find(c4d.MENURESOURCE_COMMAND, PCMD(ZYNC_DOWNLOAD_MENU_ID)):
+    res.pop().appendZyncCommand().updateParents()
+  
+  """
+
+  def __init__(self, bc):
+    """Initializer.
+    
+    Args:
+      bc: c4d.BaseContainer, Root node of the menu.
+    """
+    self.root = bc
+    self.ancestor_path = []
+
+  def appendZyncCommand(self):
+    """Adds Zync command to the resource."""
+    bc = self.ancestor_path[-1]['item']
+
+    bc_zync_menu_clone = bc.GetClone(c4d.COPYFLAGS_0)
+    bc.FlushAll()
+
+    bc.InsData(c4d.MENURESOURCE_COMMAND, PCMD(PLUGIN_ID))
+    bc.InsData(c4d.MENURESOURCE_SEPERATOR, True)
+
+    for idx, value in list(bc_zync_menu_clone):
+      bc.InsData(idx, value)
+
+    self.ancestor_path[-1]['item'] = bc
+    return self
+
+  def appendZyncMenu(self):
+    """Adds Zync Submenu to the resource and changes current resource 
+       to the created submenu."""
+    bc_zync_menu = c4d.BaseContainer()
+    bc_zync_menu.InsData(c4d.MENURESOURCE_SUBTITLE, ZYNC_SUBMENU_PCMD)
+    if hasattr(c4d, 'MENURESOURCE_SUBTITLE_ICONID'):
+      bc_zync_menu.InsData(c4d.MENURESOURCE_SUBTITLE_ICONID, PLUGIN_ID)
+    self.ancestor_path[-1]['item'].InsData(c4d.MENURESOURCE_SUBMENU,
+                                           bc_zync_menu)
+    self.ancestor_path.append(
+        dict(item=bc_zync_menu, index=len(self.ancestor_path[-1]['item']) - 1))
+    return self
+
+  def pop(self):
+    """Changes current resource to it's parent."""
+    self.ancestor_path.pop()
+    return self
+
+  def _find(self, attribute, value, bc):
+    """Recursively looks for a resource which `attribute` equals to `value`.
+    
+    Internal implementation of `find` method.
+    
+    Args:
+      attribute: int, C4D attribute description. e.g. c4d.MENURESOURCE_SUBTITLE
+      value: object, Desired value of the attribute.
+      bc: c4d.BaseContainer, Current root of the lookup.
+      
+    Returns: boolean, [dict()] First element tells if search was successful.
+        The other is a path form `bc` to found element.
+    """
+    if bc is not None:
+      for i, (attr, current) in enumerate(bc):
+        if (attr == c4d.MENURESOURCE_SUBMENU and
+            type(current) == c4d.BaseContainer):
+          result, current_path = self._find(attribute, value, current)
+          if result:
+            current_path.append(dict(item=current,index=i))
+            return True, current_path
+        elif attr == attribute and current == value:
+          return True, [dict(item=current,index=i)]
+    return False, [dict(item=None,index=0)]
+
+  def find(self, attribute, value, bc=None):
+    """Recursively looks for a resource which `attribute` equals to `value`.
+
+    Args:
+      attribute: int, C4D attribute description. e.g. c4d.MENURESOURCE_SUBTITLE
+      value: object, Desired value of the attribute.
+      bc: c4d.BaseContainer, Current root of the lookup.
+      
+    Returns: boolean, True if element was found.
+    """
+    if bc is None:
+      bc = self.root
+    result, result_path = self._find(attribute, value, bc)
+    if result:
+      self.ancestor_path = list(reversed(result_path))
+    return result
+
+  def updateParents(self):
+    """Follows the path an replaces all resources on the path with a copy hold
+       in the path structure."""
+    for i in reversed(range(len(self.ancestor_path))[1:]):
+      self.ancestor_path[i - 1]['item'].SetIndexData(
+          self.ancestor_path[i]['index'], self.ancestor_path[i]['item'])
+    self.root.SetIndexData(self.ancestor_path[0]['index'],
+                           self.ancestor_path[0]['item'])
+    return self
+
+
+def AddZyncItemsToMenu():
+  """Adds "Render with Zync" command to Pipeline->Zync submenu.
+
+  If parent elements don't exist, tries to create them.
+
+  Returns: bool, True if success.
+  """
+  main_menu = c4d.gui.GetMenuResource("M_EDITOR")
+  if not main_menu:
+    print "Not an interactive environment."
+    return False # Probably not a Cinema 4D with GUI or a TRS/TRC environment
+
+  if c4d.gui.SearchMenuResource(main_menu, PCMD(PLUGIN_ID)):
+    # Zync menu is already present
+    return True
+
+  res = ResourceWithAncestorPath(main_menu)
+  if res.find(c4d.MENURESOURCE_COMMAND, PCMD(ZYNC_DOWNLOAD_MENU_ID)):
+    res.pop().appendZyncCommand().updateParents()
+  elif res.find(c4d.MENURESOURCE_SUBTITLE, PIPELINE_MENU_PCMD):
+    res.pop().appendZyncMenu().appendZyncCommand().updateParents()
+
+  return True
+
+
+def PluginMessage(id, data):
+  # catch C4DPL_BUILDMENU to add Zync items to the menu.
+  result = False
+  if id == c4d.C4DPL_BUILDMENU:
+    result = AddZyncItemsToMenu()
+    if not result:
+      print "Zync plugin failed to update menu."
+  return result
+
+
 if __name__ == '__main__':
-    bmp = c4d.bitmaps.BaseBitmap()
-    bmp.InitWith(os.path.join(plugin_dir, 'res', 'zync.png'))
-    plugins.RegisterCommandPlugin(
-        id=PLUGIN_ID,
-        str='Render with Zync...',
-        info=c4d.PLUGINFLAG_COMMAND_ICONGADGET,
-        icon=bmp,
-        help='Render scene using Zync cloud service',
-        dat=ZyncPlugin())
+  bmp = c4d.bitmaps.BaseBitmap()
+  bmp.InitWith(os.path.join(plugin_dir, 'res', 'zync.png'))
+
+  resPipeline = c4d.gui.SearchPluginMenuResource(PIPELINE_MENU_PCMD)
+  print "Zync plugin loading..."
+  if not plugins.RegisterCommandPlugin(
+      id=PLUGIN_ID,
+      str='Render with Zync...',
+      info=c4d.PLUGINFLAG_HIDEPLUGINMENU if resPipeline else c4d.PLUGINFLAG_COMMAND_ICONGADGET,
+      icon=bmp,
+      help='Render scene using Zync cloud service',
+      dat=ZyncPlugin()):
+    print "Zync plugin failed to register command."
+  print "Zync plugin loaded."
