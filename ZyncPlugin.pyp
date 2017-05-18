@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.7.0'
+__version__ = '0.7.1'
 
 
 zync = None
@@ -20,6 +20,12 @@ PIPELINE_MENU_PCMD = "IDS_EDITOR_PIPELINE"
 
 
 plugin_dir = os.path.dirname(__file__)
+
+# See https://support.solidangle.com/display/AFCUG/Get+current+version+%7C+python
+ARNOLD_SCENE_HOOK = 1032309
+C4DTOA_MSG_TYPE = 1000
+C4DTOA_MSG_GET_VERSION = 1040
+C4DTOA_MSG_RESP1 = 2011
 
 
 def show_exceptions(func):
@@ -155,6 +161,17 @@ class ZyncDialog(gui.GeDialog):
       self.LoadLayout('CONN_DIALOG')
 
     return True
+
+  def GetC4DtoAVersion(self):
+    document = c4d.documents.GetActiveDocument()
+    arnoldSceneHook = document.FindSceneHook(ARNOLD_SCENE_HOOK)
+    if arnoldSceneHook is None:
+        return ""
+
+    msg = c4d.BaseContainer()
+    msg.SetInt32(C4DTOA_MSG_TYPE, C4DTOA_MSG_GET_VERSION)
+    arnoldSceneHook.Message(c4d.MSG_BASECONTAINER, msg)
+    return msg.GetString(C4DTOA_MSG_RESP1)
 
   @show_exceptions
   def Timer(self, msg):
@@ -804,6 +821,10 @@ class ZyncDialog(gui.GeDialog):
         'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
         'c4d_version': 'r18',  # TODO: send actual version
     }
+
+    if self.renderer == self.RDATA_RENDERENGINE_ARNOLD:
+      params['scene_info']['c4dtoa_version'] = self.GetC4DtoAVersion()
+
     # TODO:renderer specific params??
     return params
 
