@@ -10,7 +10,7 @@ Before trying to install zync-c4d, make sure to [download zync-python](https://g
 
 # Warning
 
-Note that the simplest and recommended way to install Zync plugins is through the Zync Plugin Installer (see [instructions](https://sites.google.com/site/zyncpublic/doc/install#plugins)). The steps described below are for advanced users and we recommend to proceed with them only if you need to modify the plugin code for your custom needs.
+Note that the simplest and recommended way to install Zync plugins is through the  Zync Client Application (see [instructions](https://sites.google.com/site/zyncpublic/doc/install#plugins)). The steps described below are for advanced users and we recommend to proceed with them only if you need to modify the plugin code for your custom needs.
 
 ## Clone the Repository
 

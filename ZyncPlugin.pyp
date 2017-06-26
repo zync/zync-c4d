@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.7.1'
+__version__ = '0.7.2'
 
 
 zync = None
