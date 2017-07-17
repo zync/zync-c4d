@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.7.2'
+__version__ = '0.7.3'
 
 
 zync = None
@@ -343,15 +343,15 @@ class ZyncDialog(gui.GeDialog):
 
   def DefaultOutputPath(self):
     document = c4d.documents.GetActiveDocument()
-    return os.path.join(document.GetDocumentPath(),
+    return os.path.abspath(os.path.join(document.GetDocumentPath(),
                         'renders', '$take',
-                        re.sub(r'\.c4d$', '', document.GetDocumentName()))
+                        re.sub(r'\.c4d$', '', document.GetDocumentName())))
 
   def DefaultMultipassOutputPath(self):
     document = c4d.documents.GetActiveDocument()
-    return os.path.join(document.GetDocumentPath(),
+    return os.path.abspath(os.path.join(document.GetDocumentPath(),
                         'renders', '$take',
-                        re.sub(r'\.c4d$', '', document.GetDocumentName()) + '_multi')
+                        re.sub(r'\.c4d$', '', document.GetDocumentName()) + '_multi'))
 
   @show_exceptions
   def CoreMessage(self, id, msg):
@@ -510,9 +510,9 @@ class ZyncDialog(gui.GeDialog):
     self.Enable(symbols['MULTIPASS_OUTPUT_PATH_BTN'], int(self.multipass_image_save_enabled))
     if self.multipass_image_save_enabled:
       if self.render_data[c4d.RDATA_MULTIPASS_FILENAME]:
-        self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], os.path.join(
+        self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], os.path.abspath(os.path.join(
             document.GetDocumentPath(),
-            self.render_data[c4d.RDATA_MULTIPASS_FILENAME]))
+            self.render_data[c4d.RDATA_MULTIPASS_FILENAME])))
       else:
         self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], self.DefaultMultipassOutputPath())
     else:
@@ -716,8 +716,10 @@ class ZyncDialog(gui.GeDialog):
       out_dir, dir1 = os.path.split(out_dir)
       out_name = os.path.join(dir1, out_name)
     if not os.path.isabs(out_dir):
-      out_dir = os.path.abspath(os.path.join(c4d.documents.GetActiveDocument().GetDocumentPath(), out_dir))
+      out_dir = os.path.join(c4d.documents.GetActiveDocument().GetDocumentPath(), out_dir)
 
+    # This will remove the .. and . in the path
+    out_dir = os.path.abspath(out_dir)
     return out_dir, out_name
 
   def CollectParams(self):
