@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.7.3'
+__version__ = '0.7.4'
 
 
 zync = None
@@ -695,7 +695,8 @@ class ZyncDialog(gui.GeDialog):
         gui.MessageDialog('Unexpected error during job submission')
         raise
       else:
-        gui.MessageDialog('Job submitted!\n\nYou can check the status of job in Zync console.\n\nDon\'t turn of the client app before upload is complete.')
+        gui.MessageDialog('Job submitted!\n\nYou can check the status of job in Zync console.\n\n'
+                          'Don\'t turn off the client app before upload is complete.')
         # TODO: working link to zync console (or yes/no dialog as easier solution, but it may be annoying)
 
   def EnsureSceneSaved(self):
@@ -821,7 +822,7 @@ class ZyncDialog(gui.GeDialog):
         'glob_tex_paths': [c4d.GetGlobalTexturePath(i) for i in range(10)],
         'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
         'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
-        'c4d_version': 'r18',  # TODO: send actual version
+        'c4d_version': 'r%d' % (c4d.GetC4DVersion() / 1000),
     }
 
     if self.renderer == self.RDATA_RENDERENGINE_ARNOLD:
