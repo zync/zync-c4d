@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.7.4'
+__version__ = '0.7.5'
 
 
 zync = None
@@ -245,7 +245,6 @@ class ZyncDialog(gui.GeDialog):
                   self.GetRendererName(external_renderer))
               for external_renderer in [None, self.RDATA_RENDERENGINE_ARNOLD]
           },
-          project_list=self.zync_conn.get_project_list(),
           email=self.zync_conn.email,
           project_name_hint=self.zync_conn.get_project_name(
               c4d.documents.GetActiveDocument().GetDocumentName()),  # TODO: fix web implementation
@@ -300,7 +299,7 @@ class ZyncDialog(gui.GeDialog):
     self.SetInt32(symbols['VMS_NUM'], 1, min=1)
 
     # Storage settings (zync project)
-    self.project_list = self.zync_cache['project_list']
+    self.project_list = self.zync_conn.get_project_list()
     self.project_names = [p['name'] for p in self.project_list]
     project_name_hint = re.sub(r'\.c4d$', '', document.GetDocumentName())
     self.SetComboboxContent(symbols['EXISTING_PROJ_NAME'],
@@ -881,26 +880,26 @@ def PCMD(id):
 
 
 class ResourceWithAncestorPath(object):
-  """Describes C4D menu resource. 
-  
+  """Describes C4D menu resource.
+
   It remembers path from root and it's able to update ansestors.
   History is represented as a list of dicts.
   Each element has two keys:
     'item' is the resource.
     'index' An integer telling the index of the resource in the parent container
-  
+
   Most of methods return the resource object, so it's possible to chain
   operations. Find method returns boolean.
   e.g.
   res = ResourceWithHistory(main_menu)
   if res.find(c4d.MENURESOURCE_COMMAND, PCMD(ZYNC_DOWNLOAD_MENU_ID)):
     res.pop().appendZyncCommand().updateParents()
-  
+
   """
 
   def __init__(self, bc):
     """Initializer.
-    
+
     Args:
       bc: c4d.BaseContainer, Root node of the menu.
     """
@@ -924,7 +923,7 @@ class ResourceWithAncestorPath(object):
     return self
 
   def appendZyncMenu(self):
-    """Adds Zync Submenu to the resource and changes current resource 
+    """Adds Zync Submenu to the resource and changes current resource
        to the created submenu."""
     bc_zync_menu = c4d.BaseContainer()
     bc_zync_menu.InsData(c4d.MENURESOURCE_SUBTITLE, ZYNC_SUBMENU_PCMD)
@@ -943,14 +942,14 @@ class ResourceWithAncestorPath(object):
 
   def _find(self, attribute, value, bc):
     """Recursively looks for a resource which `attribute` equals to `value`.
-    
+
     Internal implementation of `find` method.
-    
+
     Args:
       attribute: int, C4D attribute description. e.g. c4d.MENURESOURCE_SUBTITLE
       value: object, Desired value of the attribute.
       bc: c4d.BaseContainer, Current root of the lookup.
-      
+
     Returns: boolean, [dict()] First element tells if search was successful.
         The other is a path form `bc` to found element.
     """
@@ -973,7 +972,7 @@ class ResourceWithAncestorPath(object):
       attribute: int, C4D attribute description. e.g. c4d.MENURESOURCE_SUBTITLE
       value: object, Desired value of the attribute.
       bc: c4d.BaseContainer, Current root of the lookup.
-      
+
     Returns: boolean, True if element was found.
     """
     if bc is None:
