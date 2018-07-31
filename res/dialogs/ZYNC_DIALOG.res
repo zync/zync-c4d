@@ -37,8 +37,8 @@ DIALOG ZYNC_DIALOG {
           BORDERSIZE 4,4,4,4;
           BORDERSTYLE BORDER_GROUP_IN;
           COLUMNS 1;
-          NAME OUTPUT_TITLE;		  
-		  
+          NAME OUTPUT_TITLE;
+
           GROUP {
             SCALE_H;
             COLUMNS 3;

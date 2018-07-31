@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.7.5'
+__version__ = '0.8.0'
 
 
 zync = None
@@ -672,6 +672,14 @@ class ZyncDialog(gui.GeDialog):
     except self.ValidationError, e:
       gui.MessageDialog(e.message)
     else:
+      from settings import Settings
+      if ('PREEMPTIBLE' in params['instance_type']) and not Settings.get().get_pvm_ack():
+        self.pvm_consent_dialog = PvmConsentDialog()
+        self.pvm_consent_dialog.Open(dlgtype=c4d.DLG_TYPE_MODAL)
+        if not self.pvm_consent_dialog.result:
+          return
+        if self.pvm_consent_dialog.dont_show:
+          Settings.get().put_pvm_ack(True)
       if '(ALPHA)' in params['instance_type']:
         # TODO: replace standard dialog with something better, without this deceptive call to action on YES
         alpha_confirmed = gui.QuestionDialog(
@@ -991,6 +999,39 @@ class ResourceWithAncestorPath(object):
     self.root.SetIndexData(self.ancestor_path[0]['index'],
                            self.ancestor_path[0]['item'])
     return self
+
+
+class PvmConsentDialog(gui.GeDialog):
+  def __init__(self):
+    self.document = None
+    self.result = None
+    self.dont_show = None
+    super(PvmConsentDialog, self).__init__()
+
+  @show_exceptions
+  def CreateLayout(self):
+    '''Called when dialog opens; creates initial dialog content'''
+    self.LoadDialogResource(symbols['PVM_CONSENT_DIALOG'])
+
+    return True
+
+  @show_exceptions
+  def Command(self, id, msg):
+    if id == symbols['LEARN_MORE']:
+      webbrowser.open('https://cloud.google.com/compute/docs/instances/preemptible')
+    elif id == symbols['DONT_SHOW']:
+      pass
+    elif id == c4d.GEMB_R_OK:
+      self.result = True
+      self.dont_show = self.GetBool(symbols['DONT_SHOW'])
+      self.Close()
+    elif id == c4d.GEMB_R_CANCEL:
+      self.result = False
+      self.dont_show = False
+      self.Close()
+    else:
+      raise Exception('Unknown command %s' % id)
+    return super(PvmConsentDialog, self).Command(id, msg)
 
 
 def AddZyncItemsToMenu():
