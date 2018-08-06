@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import json
 
 
-__version__ = '0.8.0'
+__version__ = '0.8.1'
 
 
 zync = None
@@ -1011,9 +1011,7 @@ class PvmConsentDialog(gui.GeDialog):
   @show_exceptions
   def CreateLayout(self):
     '''Called when dialog opens; creates initial dialog content'''
-    self.LoadDialogResource(symbols['PVM_CONSENT_DIALOG'])
-
-    return True
+    return self.LoadDialogResource(symbols['PVM_CONSENT_DIALOG'])
 
   @show_exceptions
   def Command(self, id, msg):

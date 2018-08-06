@@ -1,10 +1,10 @@
 DIALOGSTRINGS PVM_CONSENT_DIALOG
 {
-  DIALOG_TITLE "PREEMPTIBLE INSTANCES";
+  PVM_DIALOG_TITLE "PREEMPTIBLE INSTANCES WARNING";
 
   BUTTON_YES "Yes";
   BUTTON_NO "No";
-  WARNING "Preemptible machines may get evicted at any given time without notification and incur data loss.";
+  PVM_WARNING "Preemptible machines may get evicted at any given time without notification and incur data loss.";
   LEARN_MORE "Learn more...";
   DONT_SHOW "Don't ask anymore";
 }
