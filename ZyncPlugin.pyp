@@ -1,14 +1,16 @@
 from __future__ import division
 
 import c4d
-from c4d import gui, plugins
-import functools, os, sys, re, thread, traceback, webbrowser
+from c4d import gui, plugins, bitmaps, documents
+import functools, os, sys, re, thread, traceback, webbrowser, glob
 import multiprocessing
 from multiprocessing.dummy import Pool as ThreadPool
 import json
+import copy
+import time
 
 
-__version__ = '0.8.1'
+__version__ = '0.9.0'
 
 
 zync = None
@@ -26,6 +28,7 @@ ARNOLD_SCENE_HOOK = 1032309
 C4DTOA_MSG_TYPE = 1000
 C4DTOA_MSG_GET_VERSION = 1040
 C4DTOA_MSG_RESP1 = 2011
+VRAY_BRIDGE_PLUGIN_ID = 1019782
 
 
 def show_exceptions(func):
@@ -97,6 +100,114 @@ def read_c4d_symbols():
 symbols = read_c4d_symbols()
 
 
+def _GetVrayRenderSettings():
+  rdata = documents.GetActiveDocument().GetActiveRenderData()
+  videopost = rdata.GetFirstVideoPost()
+  while videopost:
+    if videopost.GetType() == VRAY_BRIDGE_PLUGIN_ID:
+      return videopost
+    videopost = videopost.GetNext()
+
+
+class VRayExporter:
+
+  def ExportScene(self, render_data, vrscene_path):
+    # We just want to trigger rendering, params are arbitrary.
+    # Nothing will be rendered as we disabled rendering in PrepareSettings and enabled export.
+    doc = documents.GetActiveDocument()
+    xres = int(render_data[c4d.RDATA_XRES])
+    yres = int(render_data[c4d.RDATA_YRES])
+
+    bmp = bitmaps.MultipassBitmap(xres, yres, c4d.COLORMODE_RGB)
+    bmp.AddChannel(True, True)
+    res = documents.RenderDocument(doc, render_data, bmp,
+                                   c4d.RENDERFLAGS_EXTERNAL)
+    if res != c4d.RENDERRESULT_OK or not os.listdir(
+        os.path.dirname(vrscene_path)):
+      raise zync.ZyncError('Unable to export vray scene. Error: %d' % res)
+
+  def PrepareSettings(self, vrscene_path, frameStart, frameEnd, frameStep):
+    vray_bridge = _GetVrayRenderSettings()
+
+    self.render = vray_bridge[c4d.VP_VRAYBRIDGE_TR_RENDER]
+    self.export = vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT]
+    self.filename = vray_bridge[c4d.VP_VRAYBRIDGE_TR_FILE_NAME]
+    self.separate_files = vray_bridge[c4d.VP_VRAYBRIDGE_TR_SEPARATE_FILES]
+    self.export_light = vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_LIGHT]
+    self.export_geom = vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_GEOM]
+    self.export_mat = vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_MATS]
+    self.export_tex = vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_TEXTURES]
+    self.per_frame = vray_bridge[c4d.VP_VRAYBRIDGE_TR_PER_FRAME]
+    self.mesh_hex = vray_bridge[c4d.VP_VRAYBRIDGE_TR_MESH_HEX]
+    self.trans_hex = vray_bridge[c4d.VP_VRAYBRIDGE_TR_TRANS_HEX]
+    self.compressed = vray_bridge[c4d.VP_VRAYBRIDGE_TR_COMPRESSED]
+    self.external = vray_bridge[c4d.VP_VRAYBRIDGE_TR_RENDER_EXT]
+    self.mirror = vray_bridge[c4d.VP_VRAYBRIDGE_VFB_MIRROR_CHANNELS]
+    self.vbf = vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_SAVE]
+    self.resumable = vray_bridge[c4d.VP_VB_RESUMABLERENDER_ENABLE]
+    self.per_frame = vray_bridge[c4d.VP_VRAYBRIDGE_TR_PER_FRAME]
+    rdata = documents.GetActiveDocument().GetActiveRenderData()
+    self.start_frame = rdata[c4d.RDATA_FRAMEFROM]
+    self.end_frame = rdata[c4d.RDATA_FRAMETO]
+    self.step = rdata[c4d.RDATA_FRAMESTEP]
+    self.save_image = rdata[c4d.RDATA_SAVEIMAGE]
+    self.multi_save_image = rdata[c4d.RDATA_MULTIPASS_SAVEIMAGE]
+    self.show_vfb = vray_bridge[c4d.VP_VB_SHOW_VFB_WINDOW]
+
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_RENDER] = 0
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_FILE_NAME] = vrscene_path
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_SEPARATE_FILES] = 0
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_LIGHT] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_GEOM] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_MATS] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_TEXTURES] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_PER_FRAME] = 0
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_MESH_HEX] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_TRANS_HEX] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_COMPRESSED] = 1
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_RENDER_EXT] = 0
+    vray_bridge[c4d.VP_VRAYBRIDGE_VFB_MIRROR_CHANNELS] = 0
+    vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_SAVE] = 0
+    vray_bridge[c4d.VP_VB_RESUMABLERENDER_ENABLE] = 0
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_PER_FRAME] = 0
+    fps = documents.GetActiveDocument().GetFps()
+    rdata = documents.GetActiveDocument().GetActiveRenderData().GetDataInstance()
+    rdata[c4d.RDATA_FRAMEFROM] = c4d.BaseTime(frameStart, fps)
+    rdata[c4d.RDATA_FRAMETO] = c4d.BaseTime(frameEnd, fps)
+    rdata[c4d.RDATA_FRAMESTEP] = int(frameStep)
+    rdata[c4d.RDATA_SAVEIMAGE] = 0;
+    rdata[c4d.RDATA_MULTIPASS_SAVEIMAGE] = 0;
+    vray_bridge[c4d.VP_VB_SHOW_VFB_WINDOW] = 0
+
+  def RevertSettings(self):
+    vray_bridge = _GetVrayRenderSettings()
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_RENDER] = self.render
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT] = self.export
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_FILE_NAME] = self.filename
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_SEPARATE_FILES] = self.separate_files
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_LIGHT] = self.export_light
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_GEOM] = self.export_geom
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_MATS] = self.export_mat
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_EXPORT_TEXTURES] = self.export_tex
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_PER_FRAME] = self.per_frame
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_MESH_HEX] = self.mesh_hex
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_TRANS_HEX] = self.trans_hex
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_COMPRESSED] = self.compressed
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_RENDER_EXT] = self.external
+    vray_bridge[c4d.VP_VRAYBRIDGE_VFB_MIRROR_CHANNELS] = self.mirror or 0
+    vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_SAVE] = self.vbf
+    vray_bridge[c4d.VP_VB_RESUMABLERENDER_ENABLE] = self.resumable
+    vray_bridge[c4d.VP_VRAYBRIDGE_TR_PER_FRAME] = self.per_frame
+    rdata = documents.GetActiveDocument().GetActiveRenderData()
+    rdata[c4d.RDATA_FRAMEFROM] = self.start_frame
+    rdata[c4d.RDATA_FRAMETO] = self.end_frame
+    rdata[c4d.RDATA_FRAMESTEP] = self.step
+    rdata[c4d.RDATA_SAVEIMAGE] = self.save_image
+    rdata[c4d.RDATA_MULTIPASS_SAVEIMAGE] = self.multi_save_image
+    vray_bridge[c4d.VP_VB_SHOW_VFB_WINDOW] = self.show_vfb
+
+
 class ZyncDialog(gui.GeDialog):
 
   class ValidationError(Exception):
@@ -106,7 +217,8 @@ class ZyncDialog(gui.GeDialog):
   c4d_renderers = [c4d.RDATA_RENDERENGINE_STANDARD,
                    c4d.RDATA_RENDERENGINE_PHYSICAL]
   RDATA_RENDERENGINE_ARNOLD = 1029988
-  supported_renderers = c4d_renderers + [RDATA_RENDERENGINE_ARNOLD]
+  RDATA_RENDERENGINE_VRAY = VRAY_BRIDGE_PLUGIN_ID
+  supported_renderers = c4d_renderers + [RDATA_RENDERENGINE_ARNOLD, RDATA_RENDERENGINE_VRAY]
 
   RENDERER_NAME_MAP = {
     c4d.RDATA_RENDERENGINE_STANDARD: 'Standard',
@@ -115,6 +227,7 @@ class ZyncDialog(gui.GeDialog):
     c4d.RDATA_RENDERENGINE_PHYSICAL: 'Physical',
     c4d.RDATA_RENDERENGINE_CINEMAN: 'Cineman',
     RDATA_RENDERENGINE_ARNOLD: 'Arnold',
+    RDATA_RENDERENGINE_VRAY: 'V-Ray',
   }
 
   supported_oformats = {
@@ -135,11 +248,29 @@ class ZyncDialog(gui.GeDialog):
     c4d.FILTER_TIF: 'TIFF',
   }
 
+  supported_vray_oformats = {
+    110: 'VrImg',
+    0: 'TGA',
+    10: 'BMP',
+    20: 'HDR',
+    30: 'JPG',
+    40: 'PNG',
+    50: 'PNG', # 16 bit
+    60: 'SGI',
+    70: 'TIF',
+    80: 'TIF', # 16 bit
+    90: 'EXR', # 16
+    100: 'EXR',# 32
+  }
+
+  event_queue = []
+
   def __init__(self):
     self.logged_out = True
     self.logged_in = False
     self.autologin = True
     self.document = None
+    self.vray_exporter = VRayExporter()
     super(ZyncDialog, self).__init__()
 
   @show_exceptions
@@ -166,7 +297,7 @@ class ZyncDialog(gui.GeDialog):
     document = c4d.documents.GetActiveDocument()
     arnoldSceneHook = document.FindSceneHook(ARNOLD_SCENE_HOOK)
     if arnoldSceneHook is None:
-        return ""
+      return ""
 
     msg = c4d.BaseContainer()
     msg.SetInt32(C4DTOA_MSG_TYPE, C4DTOA_MSG_GET_VERSION)
@@ -240,14 +371,14 @@ class ZyncDialog(gui.GeDialog):
   def FetchAvailableSettings(self):
     try:
       return dict(
-          instance_types={
-              external_renderer: self.GetInstanceTypes(
-                  self.GetRendererName(external_renderer))
-              for external_renderer in [None, self.RDATA_RENDERENGINE_ARNOLD]
-          },
-          email=self.zync_conn.email,
-          project_name_hint=self.zync_conn.get_project_name(
-              c4d.documents.GetActiveDocument().GetDocumentName()),  # TODO: fix web implementation
+        instance_types={
+          external_renderer: self.GetInstanceTypes(
+            self.GetRendererName(external_renderer))
+          for external_renderer in [None, self.RDATA_RENDERENGINE_ARNOLD]
+        },
+        email=self.zync_conn.email,
+        project_name_hint=self.zync_conn.get_project_name(
+          c4d.documents.GetActiveDocument().GetDocumentName()),  # TODO: fix web implementation
       )
     except:
       traceback.print_exc()
@@ -343,20 +474,85 @@ class ZyncDialog(gui.GeDialog):
   def DefaultOutputPath(self):
     document = c4d.documents.GetActiveDocument()
     return os.path.abspath(os.path.join(document.GetDocumentPath(),
-                        'renders', '$take',
-                        re.sub(r'\.c4d$', '', document.GetDocumentName())))
+                                        'renders', '$take',
+                                        re.sub(r'\.c4d$', '', document.GetDocumentName())))
 
   def DefaultMultipassOutputPath(self):
     document = c4d.documents.GetActiveDocument()
     return os.path.abspath(os.path.join(document.GetDocumentPath(),
-                        'renders', '$take',
-                        re.sub(r'\.c4d$', '', document.GetDocumentName()) + '_multi'))
+                                        'renders', '$take',
+                                        re.sub(r'\.c4d$', '', document.GetDocumentName()) + '_multi'))
+
+  def EnqueueEvent(self, event_params):
+    """Enqueues an event that will be run as a separate ui thread event in CoreMessage method."""
+    self.event_queue.append(event_params)
+    c4d.SpecialEventAdd(PLUGIN_ID)
 
   @show_exceptions
   def CoreMessage(self, id, msg):
     if id == c4d.EVMSG_CHANGE:
       self.HandleDocumentChange()
+    if id == PLUGIN_ID:
+      # We handle only one event at a time so that their changes are propagated.
+      # Sometimes python gui thread has to finish to publish changes in render settings so that they are visible to other plugins.
+      event = self.event_queue.pop(0)
+      print('Handling event: %s' % event['name'])
+      try:
+        if event['name'] == 'prepareVrayExport':
+          self.vray_exporter.PrepareSettings(event['vrscene_path'], event['frame_begin'], event['frame_end'], event['step'])
+        elif event['name'] == 'vrayExport':
+          self.vray_exporter.ExportScene(self.render_data.GetData(), event['vrscene_path'])
+          self.SendVrayScene(event['vrscene_path'], event['params'])
+        elif event['name'] == 'cleanupVrayExport':
+          self.vray_exporter.RevertSettings()
+      except (zync.ZyncPreflightError, zync.ZyncError) as e:
+        gui.MessageDialog('%s:\n\n%s' % (e.__class__.__name__, unicode(e)))
+        traceback.print_exc()
+      except:
+        gui.MessageDialog('Unexpected error during job submission')
+        raise
+      finally:
+        if len(self.event_queue) > 0:
+          # Gui library deduplicates events of the same type. We want to force them to run as separate events.
+          c4d.SpecialEventAdd(PLUGIN_ID)
+
     return super(ZyncDialog, self).CoreMessage(id, msg)
+
+  def SendVrayScene(self, vrscene_path, params):
+    copy_keys = [
+        'renderer', 'plugin_version', 'num_instances', 'instance_type',
+        'proj_name', 'job_subtype', 'priority', 'notify_complete',
+        'upload_only', 'xres', 'yres', 'chunk_size', 'scene_info', 'take',
+        'format', 'frame_begin', 'frame_end', 'step'
+    ]
+    render_params = {key: params[key] for key in copy_keys}
+
+    vray_version = self.GetVrayVersion(vrscene_path)
+    print('Detected vray version: %s' % vray_version)
+    render_params['scene_info']['vray_version'] = vray_version
+
+    document = c4d.documents.GetActiveDocument()
+    camera = self.take.GetCamera(document.GetTakeData())
+    if camera:
+      render_params['scene_info']['camera'] = camera.GetName()
+    else:
+      render_params['scene_info']['camera'] = ''
+
+    render_path_data = {
+        '_doc': document,
+        '_rData': self.render_data,
+        '_rBc': self.render_data.GetData(),
+        '_take': self.take
+    }
+    output_path = c4d.modules.tokensystem.StringConvertTokens(
+        params['output_path'], render_path_data)
+    output_path = output_path.replace('\\', '/')
+    print('output_path: %s' % output_path)
+    render_params['output_dir'], output_name = self.SplitOutputPath(output_path)
+    render_params['output_name'] = output_name
+    vrscene = vrscene_path + '*.vrscene'
+    self.zync_conn.submit_job('c4d_vray', vrscene, params=render_params)
+    self.ShowJobSuccessfulySubmittedDialog()
 
   def HandleDocumentChange(self):
     # Reinitialize dialog in case active document was changed.
@@ -431,7 +627,7 @@ class ZyncDialog(gui.GeDialog):
                                         self.takes)
     if not self.take.GetEffectiveRenderData(document.GetTakeData()):
       gui.MessageDialog(
-          'Please load or create a scene with at least one valid take before using Zync plugin.')
+        'Please load or create a scene with at least one valid take before using Zync plugin.')
       return
     self.render_data = self.take.GetEffectiveRenderData(document.GetTakeData())[0]
     self.renderer = self.take.GetEffectiveRenderData(document.GetTakeData())[0][c4d.RDATA_RENDERENGINE]
@@ -454,6 +650,10 @@ class ZyncDialog(gui.GeDialog):
     else:
       self.SetString(symbols['RENDERER'], self.renderer_name + ' (unsupported)')
       self.available_instance_types = []
+
+    if self.renderer == self.RDATA_RENDERENGINE_VRAY:
+      self.SetInt32(symbols['CHUNK'], 1)
+      self.Enable(symbols['CHUNK'], 0)
 
     # VMs settings
     if self.available_instance_types:
@@ -510,8 +710,8 @@ class ZyncDialog(gui.GeDialog):
     if self.multipass_image_save_enabled:
       if self.render_data[c4d.RDATA_MULTIPASS_FILENAME]:
         self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], os.path.abspath(os.path.join(
-            document.GetDocumentPath(),
-            self.render_data[c4d.RDATA_MULTIPASS_FILENAME])))
+          document.GetDocumentPath(),
+          self.render_data[c4d.RDATA_MULTIPASS_FILENAME])))
       else:
         self.SetString(symbols['MULTIPASS_OUTPUT_PATH'], self.DefaultMultipassOutputPath())
     else:
@@ -688,37 +888,101 @@ class ZyncDialog(gui.GeDialog):
           'Submit the job anyway?')
         if not alpha_confirmed:
           return
-      document = c4d.documents.GetActiveDocument()
-      doc_dirpath = document.GetDocumentPath()
-      doc_name = document.GetDocumentName()
-      doc_path = os.path.join(doc_dirpath, doc_name)
 
       try:
-        self.zync_conn.submit_job('c4d', doc_path, params)
+        if self.renderer == self.RDATA_RENDERENGINE_VRAY:
+          self.SubmitVrayJob(params)
+        else:
+          self.SubmitC4dJob(params)
       except (zync.ZyncPreflightError, zync.ZyncError) as e:
         gui.MessageDialog('%s:\n\n%s' % (e.__class__.__name__, unicode(e)))
         traceback.print_exc()
       except:
         gui.MessageDialog('Unexpected error during job submission')
         raise
-      else:
-        gui.MessageDialog('Job submitted!\n\nYou can check the status of job in Zync console.\n\n'
-                          'Don\'t turn off the client app before upload is complete.')
-        # TODO: working link to zync console (or yes/no dialog as easier solution, but it may be annoying)
+
+  def ShowJobSuccessfulySubmittedDialog(self):
+    # TODO: working link to zync console (or yes/no dialog as easier solution, but it may be annoying)
+    gui.MessageDialog('Job submitted!\n\nYou can check the status of job in Zync console.\n\n'
+                      'Don\'t turn off the client app before upload is complete.')
+
+  def SubmitC4dJob(self, params):
+    document = c4d.documents.GetActiveDocument()
+    doc_dirpath = document.GetDocumentPath()
+    doc_name = document.GetDocumentName()
+    doc_path = os.path.join(doc_dirpath, doc_name)
+    self.zync_conn.submit_job('c4d', doc_path, params)
+    self.ShowJobSuccessfulySubmittedDialog()
+
+  def SubmitVrayJob(self, params):
+    print 'Vray job, collecting additional info...'
+
+    vray_bridge = _GetVrayRenderSettings()
+    if vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_SAVE] == 1:
+      params['output_path'] = vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_FILE]
+      params['format'] = self.GetVfbFormat()
+    else:
+      params['output_path'] = self.GetString(symbols['OUTPUT_PATH'])
+
+    document = c4d.documents.GetActiveDocument()
+    doc_dirpath = document.GetDocumentPath()
+    doc_name = document.GetDocumentName()
+
+    path = os.path.join(doc_dirpath, '__zync', str(time.time()))
+    if not os.path.exists(path):
+      os.makedirs(path)
+
+    vrscene_path = os.path.join(path, os.path.splitext(doc_name)[0])
+
+    # run all steps in a separate python threads so that changes are propagated
+    self.EnqueueEvent(dict(
+            name='prepareVrayExport',
+            vrscene_path=vrscene_path,
+            frame_begin=params['frame_begin'],
+            frame_end=params['frame_end'],
+            step=params['step']))
+    self.EnqueueEvent(dict(name='vrayExport', vrscene_path=vrscene_path, params=params))
+    self.EnqueueEvent(dict(name='cleanupVrayExport'))
+
+  def GetVfbFormat(self):
+    vray_bridge = _GetVrayRenderSettings()
+    output_path = vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_FILE]
+    _, extension = os.path.splitext(output_path)
+    if extension:
+      return extension  #vray bridge ignores format when file name contains extension
+    else:
+      return self.supported_vray_oformats[vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_EXT]]
+
+  def GetVrayVersion(self, vrscene_path):
+    version_files = glob.glob(vrscene_path + '*')
+    if not version_files:
+      print('Cannot determine vray version from %s' % vrscene_path)
+      raise zync.ZyncError('Cannot determine vray version. vrscene was not found.')
+
+    version_file = list(version_files)[0]
+    with open(version_file) as myfile:
+      head = [next(myfile) for x in xrange(10)]
+    first_10_lines = '\n'.join(head)
+
+    match = re.search('V-Ray core version is (?P<major>\d)\\.(?P<minor>\d{2})\\.(?P<patch>\d{2})', first_10_lines)
+    if not match:
+      print('Vray scene header: %s' % first_10_lines)
+      raise zync.ZyncError('Cannot determine vray version')
+
+    return match.group('major') + '.' + match.group('minor') + '.' + match.group('patch')
 
   def EnsureSceneSaved(self):
     document = c4d.documents.GetActiveDocument()
     if document.GetDocumentPath() == '' or document.GetChanged():
       gui.MessageDialog(
-          'The scene file must be saved in order to be uploaded to Zync.')
+        'The scene file must be saved in order to be uploaded to Zync.')
       return False
     elif document.GetDocumentPath().startswith('preset:'):
       gui.MessageDialog('Rendering scenes directly from preset files is not supported. Please save the scene in a separate file.')
       return False
     return True
 
-  def SplitOutputPath(self, control_with_path):
-    out_path = self.GetString(control_with_path)
+  def SplitOutputPath(self, out_path):
     out_dir, out_name = os.path.split(out_path)
     while '$' in out_dir:
       out_dir, dir1 = os.path.split(out_dir)
@@ -760,7 +1024,8 @@ class ZyncDialog(gui.GeDialog):
     params['upload_only'] = int(self.GetBool(symbols['UPLOAD_ONLY']))
 
     if self.regular_image_save_enabled:
-      prefix, suffix = self.SplitOutputPath(symbols['OUTPUT_PATH'])
+      out_path = self.GetString(symbols['OUTPUT_PATH'])
+      prefix, suffix = self.SplitOutputPath(out_path)
       params['output_dir'], params['output_name'] = prefix, suffix
       try:
         params['format'] = self.supported_oformats[self.render_data[c4d.RDATA_FORMAT]]
@@ -768,16 +1033,19 @@ class ZyncDialog(gui.GeDialog):
         raise self.ValidationError('Regular image output format not supported. Supported formats: ' +
                                    ', '.join(self.supported_oformats.values()))
     if self.multipass_image_save_enabled:
-      prefix, suffix = self.SplitOutputPath(symbols['MULTIPASS_OUTPUT_PATH'])
+      out_path = self.GetString(symbols['MULTIPASS_OUTPUT_PATH'])
+      prefix, suffix = self.SplitOutputPath(out_path)
       params['multipass_output_dir'], params['multipass_output_name'] = prefix, suffix
       try:
         params['format'] = self.supported_oformats[self.render_data[c4d.RDATA_MULTIPASS_SAVEFORMAT]]
       except KeyError:
         raise self.ValidationError('Multi-pass image output format not supported. Supported formats: ' +
                                    ', '.join(self.supported_oformats.values()))
-    if not (self.regular_image_save_enabled or self.multipass_image_save_enabled):
-      raise self.ValidationError('No output is enabled. Please either enable regular image ' +
-                                 'or multi-pass image output from the render settings.')
+    if not (self.regular_image_save_enabled or self.multipass_image_save_enabled
+            or self.renderer == self.RDATA_RENDERENGINE_VRAY):
+      raise self.ValidationError(
+          'No output is enabled. Please either enable regular image ' +
+          'or multi-pass image output from the render settings.')
 
 
     out_fps = self.render_data[c4d.RDATA_FRAMERATE]
@@ -824,12 +1092,12 @@ class ZyncDialog(gui.GeDialog):
       else:
         asset_files.add(asset['filename'])
     params['scene_info'] = {
-        'dependencies': list(asset_files) + list(preset_files) + user_files,
-        'preset_files': list(preset_files),
-        'glob_tex_paths': [c4d.GetGlobalTexturePath(i) for i in range(10)],
-        'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
-        'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
-        'c4d_version': 'r%d' % (c4d.GetC4DVersion() / 1000),
+      'dependencies': list(asset_files) + list(preset_files) + user_files,
+      'preset_files': list(preset_files),
+      'glob_tex_paths': [c4d.GetGlobalTexturePath(i) for i in range(10)],
+      'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
+      'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
+      'c4d_version': 'r%d' % (c4d.GetC4DVersion() / 1000),
     }
 
     if self.renderer == self.RDATA_RENDERENGINE_ARNOLD:
@@ -940,7 +1208,7 @@ class ResourceWithAncestorPath(object):
     self.ancestor_path[-1]['item'].InsData(c4d.MENURESOURCE_SUBMENU,
                                            bc_zync_menu)
     self.ancestor_path.append(
-        dict(item=bc_zync_menu, index=len(self.ancestor_path[-1]['item']) - 1))
+      dict(item=bc_zync_menu, index=len(self.ancestor_path[-1]['item']) - 1))
     return self
 
   def pop(self):
@@ -964,7 +1232,7 @@ class ResourceWithAncestorPath(object):
     if bc is not None:
       for i, (attr, current) in enumerate(bc):
         if (attr == c4d.MENURESOURCE_SUBMENU and
-            type(current) == c4d.BaseContainer):
+                type(current) == c4d.BaseContainer):
           result, current_path = self._find(attribute, value, current)
           if result:
             current_path.append(dict(item=current,index=i))
@@ -995,7 +1263,7 @@ class ResourceWithAncestorPath(object):
        in the path structure."""
     for i in reversed(range(len(self.ancestor_path))[1:]):
       self.ancestor_path[i - 1]['item'].SetIndexData(
-          self.ancestor_path[i]['index'], self.ancestor_path[i]['item'])
+        self.ancestor_path[i]['index'], self.ancestor_path[i]['item'])
     self.root.SetIndexData(self.ancestor_path[0]['index'],
                            self.ancestor_path[0]['item'])
     return self
@@ -1011,7 +1279,9 @@ class PvmConsentDialog(gui.GeDialog):
   @show_exceptions
   def CreateLayout(self):
     '''Called when dialog opens; creates initial dialog content'''
-    return self.LoadDialogResource(symbols['PVM_CONSENT_DIALOG'])
+    self.LoadDialogResource(symbols['PVM_CONSENT_DIALOG'])
+
+    return True
 
   @show_exceptions
   def Command(self, id, msg):
@@ -1074,11 +1344,11 @@ if __name__ == '__main__':
   resPipeline = c4d.gui.SearchPluginMenuResource(PIPELINE_MENU_PCMD)
   print "Zync plugin loading..."
   if not plugins.RegisterCommandPlugin(
-      id=PLUGIN_ID,
-      str='Render with Zync...',
-      info=c4d.PLUGINFLAG_HIDEPLUGINMENU if resPipeline else c4d.PLUGINFLAG_COMMAND_ICONGADGET,
-      icon=bmp,
-      help='Render scene using Zync cloud service',
-      dat=ZyncPlugin()):
+          id=PLUGIN_ID,
+          str='Render with Zync...',
+          info=c4d.PLUGINFLAG_HIDEPLUGINMENU if resPipeline else c4d.PLUGINFLAG_COMMAND_ICONGADGET,
+          icon=bmp,
+          help='Render scene using Zync cloud service',
+          dat=ZyncPlugin()):
     print "Zync plugin failed to register command."
   print "Zync plugin loaded."
