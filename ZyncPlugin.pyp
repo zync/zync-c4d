@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.0'
+__version__ = '0.9.1'
 
 
 zync = None
@@ -107,6 +107,7 @@ def _GetVrayRenderSettings():
     if videopost.GetType() == VRAY_BRIDGE_PLUGIN_ID:
       return videopost
     videopost = videopost.GetNext()
+  raise zync.ZyncError('Unable to get V-Ray render settings')
 
 
 class VRayExporter:
@@ -176,8 +177,8 @@ class VRayExporter:
     rdata[c4d.RDATA_FRAMEFROM] = c4d.BaseTime(frameStart, fps)
     rdata[c4d.RDATA_FRAMETO] = c4d.BaseTime(frameEnd, fps)
     rdata[c4d.RDATA_FRAMESTEP] = int(frameStep)
-    rdata[c4d.RDATA_SAVEIMAGE] = 0;
-    rdata[c4d.RDATA_MULTIPASS_SAVEIMAGE] = 0;
+    rdata[c4d.RDATA_SAVEIMAGE] = 0
+    rdata[c4d.RDATA_MULTIPASS_SAVEIMAGE] = 0
     vray_bridge[c4d.VP_VB_SHOW_VFB_WINDOW] = 0
 
   def RevertSettings(self):
@@ -205,7 +206,7 @@ class VRayExporter:
     rdata[c4d.RDATA_FRAMESTEP] = self.step
     rdata[c4d.RDATA_SAVEIMAGE] = self.save_image
     rdata[c4d.RDATA_MULTIPASS_SAVEIMAGE] = self.multi_save_image
-    vray_bridge[c4d.VP_VB_SHOW_VFB_WINDOW] = self.show_vfb
+    vray_bridge[c4d.VP_VB_SHOW_VFB_WINDOW] = self.show_vfb or 0
 
 
 class ZyncDialog(gui.GeDialog):
@@ -917,6 +918,16 @@ class ZyncDialog(gui.GeDialog):
   def SubmitVrayJob(self, params):
     print 'Vray job, collecting additional info...'
 
+    if self.regular_image_save_enabled and self.multipass_image_save_enabled:
+      if self.render_data[c4d.RDATA_FORMAT] != self.render_data[c4d.RDATA_MULTIPASS_SAVEFORMAT]:
+        gui.MessageDialog(
+            'WARNING: Regular output format is different than multipass output format. Vray jobs support only one output format. Regular output format will be used.'
+        )
+      if self.GetString(symbols['OUTPUT_PATH']) != self.GetString(symbols['MULTIPASS_OUTPUT_PATH']):
+        gui.MessageDialog(
+            'WARNING: Regular output path is different than multipass output path. Vray jobs support only one output path. Regular output path will be used for all render elements.'
+        )
+
     vray_bridge = _GetVrayRenderSettings()
     if vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_SAVE] == 1:
       params['output_path'] = vray_bridge[c4d.VP_VRAYBRIDGE_VFB_IMAGE_FILE]
@@ -1032,7 +1043,7 @@ class ZyncDialog(gui.GeDialog):
       except KeyError:
         raise self.ValidationError('Regular image output format not supported. Supported formats: ' +
                                    ', '.join(self.supported_oformats.values()))
-    if self.multipass_image_save_enabled:
+    if self.multipass_image_save_enabled and self.renderer != self.RDATA_RENDERENGINE_VRAY:
       out_path = self.GetString(symbols['MULTIPASS_OUTPUT_PATH'])
       prefix, suffix = self.SplitOutputPath(out_path)
       params['multipass_output_dir'], params['multipass_output_name'] = prefix, suffix
