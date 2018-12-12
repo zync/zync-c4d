@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.1'
+__version__ = '0.9.2'
 
 
 zync = None
@@ -1102,10 +1102,15 @@ class ZyncDialog(gui.GeDialog):
           raise self.ValidationError('Unable to locate asset \'%s\'' % asset['filename'])
       else:
         asset_files.add(asset['filename'])
+
+    num_of_glob_tex_paths = 10 # https://developers.maxon.net/docs/Cinema4DPythonSDK/html/modules/c4d/index.html#c4d.GetGlobalTexturePath
+    glob_tex_paths = [c4d.GetGlobalTexturePath(i) for i in range(num_of_glob_tex_paths)]
+    glob_tex_paths = [path for path in glob_tex_paths if path]
+
     params['scene_info'] = {
       'dependencies': list(asset_files) + list(preset_files) + user_files,
       'preset_files': list(preset_files),
-      'glob_tex_paths': [c4d.GetGlobalTexturePath(i) for i in range(10)],
+      'glob_tex_paths': glob_tex_paths,
       'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
       'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
       'c4d_version': 'r%d' % (c4d.GetC4DVersion() / 1000),
