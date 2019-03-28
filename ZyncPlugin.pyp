@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.2'
+__version__ = '0.9.3'
 
 
 zync = None
@@ -223,7 +223,6 @@ class ZyncDialog(gui.GeDialog):
 
   RENDERER_NAME_MAP = {
     c4d.RDATA_RENDERENGINE_STANDARD: 'Standard',
-    c4d.RDATA_RENDERENGINE_PREVIEWSOFTWARE: 'Software',
     c4d.RDATA_RENDERENGINE_PREVIEWHARDWARE: 'Hardware',
     c4d.RDATA_RENDERENGINE_PHYSICAL: 'Physical',
     c4d.RDATA_RENDERENGINE_CINEMAN: 'Cineman',
@@ -394,12 +393,20 @@ class ZyncDialog(gui.GeDialog):
   def GetInstanceTypes(self, renderer_name):
     instance_types_dict = self.zync_conn.get_instance_types(
       renderer=renderer_name)
+
+    def _safe_format_cost(cost):
+      try:
+        f = float(cost)
+        return "$%.2f" % (f,)
+      except ValueError:
+        return cost
+
     instance_types = [
       {
         'order': properties['order'],
         'name': name,
         'cost': properties['cost'],
-        'label': '%s ($%s)' % (name, properties['cost']),
+        'label': '%s (%s)' % (name, _safe_format_cost(properties['cost'])),
       }
       for name, properties in instance_types_dict.iteritems()
     ]
