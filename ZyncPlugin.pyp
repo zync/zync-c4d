@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.3'
+__version__ = '0.9.4'
 
 
 zync = None
@@ -982,12 +982,19 @@ class ZyncDialog(gui.GeDialog):
       head = [next(myfile) for x in xrange(10)]
     first_10_lines = '\n'.join(head)
 
+    # Version numbers written by exporter may be inconsistent, for example
+    # V-Ray 3.7 writes both lines:
+    # // V-Ray core version is 3.60.05
+    # // Exported by V-Ray 3.7
+    match = re.search('Exported by V-Ray (?P<major>\d)\\.(?P<minor>\d+)', first_10_lines)
+    if match:
+      return match.group('major') + '.' + match.group('minor')
     match = re.search('V-Ray core version is (?P<major>\d)\\.(?P<minor>\d{2})\\.(?P<patch>\d{2})', first_10_lines)
-    if not match:
-      print('Vray scene header: %s' % first_10_lines)
-      raise zync.ZyncError('Cannot determine vray version')
+    if match:
+      return match.group('major') + '.' + match.group('minor') + '.' + match.group('patch')
 
-    return match.group('major') + '.' + match.group('minor') + '.' + match.group('patch')
+    print('Vray scene header: %s' % first_10_lines)
+    raise zync.ZyncError('Cannot determine vray version')
 
   def EnsureSceneSaved(self):
     document = c4d.documents.GetActiveDocument()
