@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.4'
+__version__ = '0.9.6'
 
 
 zync = None
@@ -218,8 +218,9 @@ class ZyncDialog(gui.GeDialog):
   c4d_renderers = [c4d.RDATA_RENDERENGINE_STANDARD,
                    c4d.RDATA_RENDERENGINE_PHYSICAL]
   RDATA_RENDERENGINE_ARNOLD = 1029988
+  RDATA_RENDERENGINE_REDSHIFT = 1036219
   RDATA_RENDERENGINE_VRAY = VRAY_BRIDGE_PLUGIN_ID
-  supported_renderers = c4d_renderers + [RDATA_RENDERENGINE_ARNOLD, RDATA_RENDERENGINE_VRAY]
+  supported_renderers = c4d_renderers + [RDATA_RENDERENGINE_ARNOLD, RDATA_RENDERENGINE_VRAY, RDATA_RENDERENGINE_REDSHIFT]
 
   RENDERER_NAME_MAP = {
     c4d.RDATA_RENDERENGINE_STANDARD: 'Standard',
@@ -228,6 +229,7 @@ class ZyncDialog(gui.GeDialog):
     c4d.RDATA_RENDERENGINE_CINEMAN: 'Cineman',
     RDATA_RENDERENGINE_ARNOLD: 'Arnold',
     RDATA_RENDERENGINE_VRAY: 'V-Ray',
+    RDATA_RENDERENGINE_REDSHIFT: 'Redshift',
   }
 
   supported_oformats = {
@@ -293,6 +295,15 @@ class ZyncDialog(gui.GeDialog):
 
     return True
 
+  def GetRedshiftVersion(self):
+    try:
+      import redshift
+      return redshift.GetCoreVersion()
+    except:
+      print 'Error getting RedShift version, assuming <2.6.23'
+      traceback.print_exc()
+      return '2.6.0'
+  
   def GetC4DtoAVersion(self):
     document = c4d.documents.GetActiveDocument()
     arnoldSceneHook = document.FindSceneHook(ARNOLD_SCENE_HOOK)
@@ -372,9 +383,8 @@ class ZyncDialog(gui.GeDialog):
     try:
       return dict(
         instance_types={
-          external_renderer: self.GetInstanceTypes(
-            self.GetRendererName(external_renderer))
-          for external_renderer in [None, self.RDATA_RENDERENGINE_ARNOLD]
+          external_renderer: self.GetInstanceTypes(external_renderer)
+          for external_renderer in [None, self.RDATA_RENDERENGINE_ARNOLD, self.RDATA_RENDERENGINE_REDSHIFT]
         },
         email=self.zync_conn.email,
         project_name_hint=self.zync_conn.get_project_name(
@@ -390,9 +400,10 @@ class ZyncDialog(gui.GeDialog):
     self.logged_in = True
     self.InitializeControls()
 
-  def GetInstanceTypes(self, renderer_name):
+  def GetInstanceTypes(self, renderer_id):
+    renderer_name = self.GetRendererName(renderer_id)
     instance_types_dict = self.zync_conn.get_instance_types(
-      renderer=renderer_name)
+      renderer=renderer_name, usage_tag='c4d_redshift' if renderer_id == self.RDATA_RENDERENGINE_REDSHIFT else None)
 
     def _safe_format_cost(cost):
       try:
@@ -1132,6 +1143,8 @@ class ZyncDialog(gui.GeDialog):
 
     if self.renderer == self.RDATA_RENDERENGINE_ARNOLD:
       params['scene_info']['c4dtoa_version'] = self.GetC4DtoAVersion()
+    elif self.renderer == self.RDATA_RENDERENGINE_REDSHIFT:
+      params['scene_info']['redshift_version'] = self.GetRedshiftVersion()
 
     # TODO:renderer specific params??
     return params
