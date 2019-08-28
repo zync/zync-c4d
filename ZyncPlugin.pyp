@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.6'
+__version__ = '0.9.7'
 
 
 zync = None
@@ -25,6 +25,7 @@ plugin_dir = os.path.dirname(__file__)
 
 # See https://support.solidangle.com/display/AFCUG/Get+current+version+%7C+python
 ARNOLD_SCENE_HOOK = 1032309
+ARNOLD_RENDERER = 1029988
 C4DTOA_MSG_TYPE = 1000
 C4DTOA_MSG_GET_VERSION = 1040
 C4DTOA_MSG_RESP1 = 2011
@@ -108,6 +109,16 @@ def _GetVrayRenderSettings():
       return videopost
     videopost = videopost.GetNext()
   raise zync.ZyncError('Unable to get V-Ray render settings')
+
+
+def _GetArnoldRenderSettings():
+  rdata = documents.GetActiveDocument().GetActiveRenderData()
+  videopost = rdata.GetFirstVideoPost()
+  while videopost:
+    if videopost.GetType() == ARNOLD_RENDERER:
+      return videopost
+    videopost = videopost.GetNext()
+  raise zync.ZyncError('Unable to get Arnold render settings')
 
 
 class VRayExporter:
@@ -303,7 +314,7 @@ class ZyncDialog(gui.GeDialog):
       print 'Error getting RedShift version, assuming <2.6.23'
       traceback.print_exc()
       return '2.6.0'
-  
+
   def GetC4DtoAVersion(self):
     document = c4d.documents.GetActiveDocument()
     arnoldSceneHook = document.FindSceneHook(ARNOLD_SCENE_HOOK)
@@ -1143,6 +1154,10 @@ class ZyncDialog(gui.GeDialog):
 
     if self.renderer == self.RDATA_RENDERENGINE_ARNOLD:
       params['scene_info']['c4dtoa_version'] = self.GetC4DtoAVersion()
+      arnold_render_settings = _GetArnoldRenderSettings()
+      if arnold_render_settings[c4d.C4DAIP_OPTIONS_SKIP_LICENSE_CHECK]:
+        raise self.ValidationError('Please disable "Skip license check" in your '
+                                   'Arnold settings to avoid rendering with a watermark.')
     elif self.renderer == self.RDATA_RENDERENGINE_REDSHIFT:
       params['scene_info']['redshift_version'] = self.GetRedshiftVersion()
 
