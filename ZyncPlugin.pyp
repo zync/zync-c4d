@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.7'
+__version__ = '0.9.8'
 
 
 zync = None
@@ -1149,7 +1149,7 @@ class ZyncDialog(gui.GeDialog):
       'glob_tex_paths': glob_tex_paths,
       'lib_path_global': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY),
       'lib_path_user': c4d.storage.GeGetC4DPath(c4d.C4D_PATH_LIBRARY_USER),
-      'c4d_version': 'r%d' % (c4d.GetC4DVersion() / 1000),
+      'c4d_version': 'r%d.%03d' % (c4d.GetC4DVersion() / 1000, c4d.GetC4DVersion() % 1000),
     }
 
     if self.renderer == self.RDATA_RENDERENGINE_ARNOLD:
