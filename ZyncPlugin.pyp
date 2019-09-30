@@ -10,7 +10,7 @@ import copy
 import time
 
 
-__version__ = '0.9.8'
+__version__ = '0.9.9'
 
 
 zync = None
@@ -30,6 +30,7 @@ C4DTOA_MSG_TYPE = 1000
 C4DTOA_MSG_GET_VERSION = 1040
 C4DTOA_MSG_RESP1 = 2011
 VRAY_BRIDGE_PLUGIN_ID = 1019782
+REDSHIFT_VIDEOPOSTS = [1036219, 1040189]
 
 
 def show_exceptions(func):
@@ -119,6 +120,15 @@ def _GetArnoldRenderSettings():
       return videopost
     videopost = videopost.GetNext()
   raise zync.ZyncError('Unable to get Arnold render settings')
+
+
+def _GenRedshiftRenderSettings():
+  rdata = documents.GetActiveDocument().GetActiveRenderData()
+  videopost = rdata.GetFirstVideoPost()
+  while videopost:
+    if videopost.GetType() in REDSHIFT_VIDEOPOSTS:
+      yield videopost
+    videopost = videopost.GetNext()
 
 
 class VRayExporter:
@@ -1142,6 +1152,12 @@ class ZyncDialog(gui.GeDialog):
     num_of_glob_tex_paths = 10 # https://developers.maxon.net/docs/Cinema4DPythonSDK/html/modules/c4d/index.html#c4d.GetGlobalTexturePath
     glob_tex_paths = [c4d.GetGlobalTexturePath(i) for i in range(num_of_glob_tex_paths)]
     glob_tex_paths = [path for path in glob_tex_paths if path]
+
+    if self.renderer == self.RDATA_RENDERENGINE_REDSHIFT:
+      for redshift_videopost in _GenRedshiftRenderSettings():
+        ocio_config_path = redshift_videopost[c4d.REDSHIFT_POSTEFFECTS_COLORMANAGEMENT_OCIO_FILE]
+        if ocio_config_path:
+          asset_files.update(zync.get_ocio_files(ocio_config_path))
 
     params['scene_info'] = {
       'dependencies': list(asset_files) + list(preset_files) + user_files,
