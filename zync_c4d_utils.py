@@ -31,15 +31,12 @@ def show_exceptions(func):
 
   return _wrapped
 
-
 @show_exceptions
 def import_zync_module(zync_module_name):
   """
-  Imports zync-python module.
+  Imports and returns a module from zync-python.
 
-  Importing zync-python module is deferred until user's action (i.e. attempt to open plugin window),
-  because we are not able to reliably show message windows any time earlier. Zync-python is not
-  needed for plugin to load.
+  Reads the plugin config file to find the path to zync-python.
   """
   old_sys_path = list(sys.path)
 
@@ -62,3 +59,16 @@ def import_zync_module(zync_module_name):
     return import_module(zync_module_name)
   finally:
     sys.path = old_sys_path
+
+def init_c4d_resources():
+  """
+  Initializes and returns a C4D resource.
+
+  Some C4D functions require global __res__ to be initialized if they are called from a different
+  module than the *.pyp file. This function should be used as follows:
+
+  __res__ = init_c4d_resources()
+  """
+  res = c4d.plugins.GeResource()
+  res.Init(PLUGIN_DIR)
+  return res
