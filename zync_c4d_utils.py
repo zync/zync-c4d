@@ -10,6 +10,7 @@ from zync_c4d_constants import PLUGIN_DIR
 
 c4d = import_module('c4d')
 
+
 def show_exceptions(func):
   """
   Error-showing decorator for all entry points.
@@ -30,6 +31,7 @@ def show_exceptions(func):
       raise
 
   return _wrapped
+
 
 @show_exceptions
 def import_zync_module(zync_module_name):
@@ -60,6 +62,7 @@ def import_zync_module(zync_module_name):
   finally:
     sys.path = old_sys_path
 
+
 def init_c4d_resources():
   """
   Initializes and returns a C4D resource.
@@ -72,3 +75,13 @@ def init_c4d_resources():
   res = c4d.plugins.GeResource()
   res.Init(PLUGIN_DIR)
   return res
+
+
+def is_windows():
+  """
+  Checks if the system is Windows.
+
+  :return bool:
+  """
+  import sys
+  return sys.platform == 'win32'

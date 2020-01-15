@@ -3,6 +3,7 @@ Implements Zync plugin for C4D.
 """
 
 from __future__ import division
+
 from importlib import import_module
 import os
 import sys
@@ -17,13 +18,14 @@ c4d = import_module('c4d')
 from zync_c4d_utils import show_exceptions
 import zync_c4d_constants
 
-__version__ = '0.10.0'
+__version__ = '0.10.1'
 
 
 class ZyncPlugin(c4d.plugins.CommandData):
   """
   Implements Zync plugin for C4D.
   """
+
   def __init__(self):
     self._dialog = None
 

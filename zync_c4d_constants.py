@@ -6,6 +6,7 @@ import re
 
 PLUGIN_DIR = os.path.dirname(__file__)
 
+
 def _read_c4d_symbols():
   """
   Returns a dictionary of symbols defined in c4d_symbols.h
@@ -31,6 +32,7 @@ def _read_c4d_symbols():
       symbols[match.group(1)] = int(match.group(2))
   return symbols
 
+
 SYMBOLS = _read_c4d_symbols()
 PLUGIN_ID = 1038932
 
@@ -46,3 +48,16 @@ C4DTOA_MSG_GET_VERSION = 1040
 C4DTOA_MSG_RESP1 = 2011
 VRAY_BRIDGE_PLUGIN_ID = 1019782
 REDSHIFT_VIDEOPOSTS = [1036219, 1040189]
+
+RDATA_RENDERENGINE_ARNOLD = 1029988
+RDATA_RENDERENGINE_REDSHIFT = 1036219
+RDATA_RENDERENGINE_VRAY = VRAY_BRIDGE_PLUGIN_ID
+
+
+class RendererNames(object):
+  """ Enumerates renderer names supported by Zync. """
+  STANDARD = 'Standard'
+  PHYSICAL = 'Physical'
+  ARNOLD = 'Arnold'
+  VRAY = 'V-Ray'
+  REDSHIFT = 'Redshift'

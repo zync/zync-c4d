@@ -1,11 +1,13 @@
 """ Contains PVM consent dialog used in Zync plugin. """
 from importlib import import_module
 import webbrowser
-from zync_c4d_utils import init_c4d_resources, show_exceptions
+
 from zync_c4d_constants import SYMBOLS
+from zync_c4d_utils import init_c4d_resources, show_exceptions
 
 c4d = import_module('c4d')
 __res__ = init_c4d_resources()
+
 
 class PvmConsentDialog(c4d.gui.GeDialog):
   """
