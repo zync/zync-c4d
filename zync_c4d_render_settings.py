@@ -229,7 +229,7 @@ class C4dRenderSettings(zync_threading.MainThreadCaller):
     :return Optional[str]:
     """
     renderer_id = self._render_data[c4d.RDATA_RENDERENGINE]
-    if not renderer_id:
+    if renderer_id is None:
       return None
     elif renderer_id in self.renderer_name_map:
       return self.renderer_name_map[renderer_id]
