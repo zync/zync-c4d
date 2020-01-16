@@ -89,7 +89,7 @@ class C4dFacade(zync_threading.MainThreadCaller):
     :param bool directory: If True, the dialog will select a directory instead of file.
     :return Optional[str]:
     """
-    return c4d.storage.LoadDialog(c4d.FILESELECT_DIRECTORY if directory else c4d.FILESELECT_LOAD)
+    return c4d.storage.LoadDialog(flags=c4d.FILESELECT_DIRECTORY if directory else c4d.FILESELECT_LOAD)
 
   @main_thread
   def show_message_box(self, msg_format, *format_args):

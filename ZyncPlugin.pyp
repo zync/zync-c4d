@@ -18,7 +18,7 @@ c4d = import_module('c4d')
 from zync_c4d_utils import show_exceptions
 import zync_c4d_constants
 
-__version__ = '0.10.2'
+__version__ = '0.10.3'
 
 
 class ZyncPlugin(c4d.plugins.CommandData):
