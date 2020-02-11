@@ -35,6 +35,7 @@ class C4dRenderingFailedException(Exception):
 
   :param int render_result:
   """
+
   def __init__(self, render_result):
     super(C4dRenderingFailedException, self).__init__('Error code: %d' % render_result)
 

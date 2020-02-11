@@ -46,7 +46,8 @@ class C4dSceneSettings(zync_threading.MainThreadCaller):
 
     def _traverse(take, depth):
       take_settings.append(
-        C4dTakeSettings(self._main_thread_executor, take, take_data, depth, self._document))
+          C4dTakeSettings(self._main_thread_executor, take, take_data, depth,
+                          self._document))
       for child_take in take.GetChildren():
         _traverse(child_take, depth + 1)
 
@@ -70,6 +71,14 @@ class C4dSceneSettings(zync_threading.MainThreadCaller):
     :return str:
     """
     return self._document.GetDocumentName()
+
+  def get_scene_name_without_extension(self):
+    """
+    Returns name of the scene without extension.
+
+    :return str:
+    """
+    return re.sub(r'\.c4d$', '', self.get_scene_name())
 
   @main_thread
   def get_scene_path(self):

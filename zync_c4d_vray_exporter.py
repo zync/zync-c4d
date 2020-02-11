@@ -3,7 +3,6 @@ import os
 
 from zync_c4d_render_settings import C4dRenderingFailedException
 from zync_c4d_utils import import_zync_module
-from zync_c4d_vray_settings import C4dVrayVersionException
 
 zync = import_zync_module('zync')
 zync_threading = import_zync_module('zync_threading')

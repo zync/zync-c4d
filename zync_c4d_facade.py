@@ -37,7 +37,7 @@ class C4dFacade(zync_threading.MainThreadCaller):
 
     :return str:
     """
-    return 'r%d.%03d' % (c4d.GetC4DVersion() / 1000, c4d.GetC4DVersion() % 1000)
+    return zync_c4d_utils.get_c4d_version()
 
   @main_thread
   def get_global_texture_paths(self):
