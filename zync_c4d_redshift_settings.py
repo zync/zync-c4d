@@ -29,10 +29,12 @@ class C4dRedshiftSettings(zync_threading.MainThreadCaller):
     :return list[str]:
     """
     ocio_config_paths = []
-    for video_post in self._video_posts:
-      ocio_config_path = video_post[c4d.REDSHIFT_POSTEFFECTS_COLORMANAGEMENT_OCIO_FILE]
-      if ocio_config_path:
-        ocio_config_paths.append(ocio_config_path)
+    # This feature is not available with all RedShift versions
+    if hasattr(c4d, 'REDSHIFT_POSTEFFECTS_COLORMANAGEMENT_OCIO_FILE'):
+      for video_post in self._video_posts:
+        ocio_config_path = video_post[c4d.REDSHIFT_POSTEFFECTS_COLORMANAGEMENT_OCIO_FILE]
+        if ocio_config_path:
+          ocio_config_paths.append(ocio_config_path)
     return ocio_config_paths
 
   @main_thread
